@@ -1,0 +1,13 @@
+target/
+node_modules/
+.bsp/
+.idea/
+.metals/
+.bloop/
+.vscode/
+dist/
+frontend/test-results/
+frontend/playwright-report/
+.DS_Store
+.env
+.claude/

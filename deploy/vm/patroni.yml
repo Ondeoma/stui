@@ -1,0 +1,60 @@
+# /etc/patroni/patroni.yml（例: stui1。name と各アドレスをノードごとに変える。権限 0600, 所有者 postgres）
+scope: stui
+name: stui1
+restapi:
+  listen: 10.0.0.11:8008
+  connect_address: 10.0.0.11:8008
+etcd3:
+  hosts: 10.0.0.11:2379,10.0.0.12:2379,10.0.0.13:2379
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    check_timeline: true         # 分岐した（古いタイムラインの）ノードを昇格させない
+    failsafe_mode: true          # etcdが全滅してもPostgreSQL同士が見えていればプライマリを維持する
+    postgresql:
+      use_pg_rewind: true
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+        wal_log_hints: "on"
+        archive_mode: "on"
+        archive_command: "pgbackrest --stanza=stui archive-push %p"
+  initdb:
+    - encoding: UTF8
+    - locale: C.UTF-8
+    - data-checksums
+  pg_hba:
+    - local all all peer
+    - host replication replicator 10.0.0.0/24 scram-sha-256
+    - host all all 10.0.0.0/24 scram-sha-256
+  post_bootstrap: /etc/patroni/post_bootstrap.sh   # deploy/docker/post_bootstrap.sh と同じ内容（stuiロール・DB・pgroonga拡張）
+postgresql:
+  listen: 10.0.0.11:5432
+  connect_address: 10.0.0.11:5432
+  data_dir: /var/lib/postgresql/17/stui
+  bin_dir: /usr/lib/postgresql/17/bin      # OSのパッケージに合わせる（RHEL系は /usr/pgsql-17/bin）
+  pgpass: /var/lib/postgresql/.pgpass_patroni
+  basebackup:
+    - checkpoint: fast
+  # pg_rewind は PGroonga の独自WALレコードを読めず失敗する。その場合はデータを消してプライマリから取り直す
+  remove_data_directory_on_rewind_failure: true
+  remove_data_directory_on_diverged_timelines: true
+  authentication:
+    superuser: { username: postgres, password: change-me }
+    replication: { username: replicator, password: change-me }
+    rewind: { username: rewind_user, password: change-me }
+  parameters:
+    # PGroongaの索引はPostgreSQL本体のWALに載らないため、専用のWALリソースマネージャで複製する（全ノードで必須）。
+    # これがないと、フェイルオーバー後の新プライマリで全文検索索引が壊れる（障害試験で確認済み）。
+    shared_preload_libraries: pgroonga_wal_resource_manager
+    pgroonga.enable_wal_resource_manager: "on"
+    shared_buffers: 1GB
+    max_connections: 200
+tags:
+  nofailover: false
+  noloadbalance: false

@@ -1,0 +1,110 @@
+/* リッチテキストエディタ（Tiptap）と、サーバーが組み立てた HTML の表示（.rich） */
+.sk-editor { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; }
+.sk-editor:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.sk-toolbar { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--side); }
+.sk-tb { border: none; background: transparent; color: inherit; min-width: 28px; height: 28px; border-radius: 5px; cursor: pointer; font-size: .85rem; padding: 0 6px; }
+.sk-tb:hover { background: var(--hover); }
+.sk-tb.active { background: var(--accent-weak); color: var(--accent); }
+.sk-sep { width: 1px; background: var(--line); margin: 4px 3px; }
+.sk-area .ProseMirror { min-height: 4.5rem; padding: .6rem .8rem; outline: none; }
+.sk-area .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--muted); float: left; height: 0; pointer-events: none; }
+.sk-mention-box { position: absolute; z-index: 3000; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; min-width: 180px; }
+.sk-mention-item { display: block; width: 100%; text-align: left; border: none; background: transparent; color: inherit; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
+.sk-mention-item.selected, .sk-mention-item:hover { background: var(--accent-weak); }
+.sk-mention-empty { padding: 6px 10px; color: var(--muted); font-size: .85rem; }
+
+.rich, .sk-area .ProseMirror { line-height: 1.7; word-break: break-word; }
+.rich > :first-child, .sk-area .ProseMirror > :first-child { margin-top: 0; }
+.rich > :last-child, .sk-area .ProseMirror > :last-child { margin-bottom: 0; }
+.rich p, .sk-area .ProseMirror p { margin: .35em 0; }
+/* リスト・ToDo は行の間を詰める */
+.rich ul, .rich ol, .sk-area ul, .sk-area ol { margin: .25em 0; padding-left: 1.4em; }
+.rich li, .sk-area li { margin: 0; }
+.rich li > p, .rich li > div > p, .sk-area .ProseMirror li > p, .sk-area .ProseMirror li > div > p { margin: .05em 0; }
+.rich h1, .rich h2, .rich h3, .sk-area h1, .sk-area h2, .sk-area h3 { margin: .9em 0 .4em; line-height: 1.35; }
+.rich h1, .sk-area h1 { font-size: 1.35rem; } .rich h2, .sk-area h2 { font-size: 1.2rem; } .rich h3, .sk-area h3 { font-size: 1.05rem; }
+.rich code, .sk-area code { background: var(--side); border-radius: 4px; padding: .1em .35em; font-size: .88em; }
+.rich pre, .sk-area pre { background: var(--code-bg); color: #e2e8f0; border: 1px solid var(--code-line); border-radius: 8px; padding: .8rem 1rem; overflow-x: auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03); }
+/* 表示: 言語名を左上に出す（data-lang は highlight.js が付ける） */
+.rich pre[data-lang] { position: relative; padding-top: 1.7rem; }
+.rich pre[data-lang]::before { content: attr(data-lang); position: absolute; top: .35rem; left: .7rem; font-size: .68rem; color: #94a3b8; letter-spacing: .02em; }
+.rich pre code, .sk-area pre code { background: none; padding: 0; color: inherit; }
+.rich blockquote, .sk-area blockquote { border-left: 3px solid var(--line); margin: .5em 0; padding-left: .9em; color: var(--muted); }
+.rich img, .sk-area img { max-width: 100%; border-radius: 6px; }
+.rich table, .sk-area table { border-collapse: collapse; margin: .6em 0; overflow-x: auto; display: block; }
+.rich th, .rich td, .sk-area th, .sk-area td { border: 1px solid var(--line); padding: 4px 8px; min-width: 3em; vertical-align: top; }
+.rich th, .sk-area th { background: var(--side); }
+.rich ul.task-list, .sk-area ul[data-type="taskList"] { list-style: none; padding-left: .2em; }
+.rich li.task-item, .sk-area ul[data-type="taskList"] li { display: flex; gap: .45em; align-items: flex-start; }
+/* チェックボックス（13px）の中心を、1行目の文字（行の高さ 1.7em）の中心に合わせる */
+.sk-area ul[data-type="taskList"] li > label { margin-top: calc(.9em - 6.5px); line-height: 1; display: flex; font-size: inherit; }
+.sk-area ul[data-type="taskList"] li > div { flex: 1; }
+.rich li.task-item.checked > div { color: var(--muted); text-decoration: line-through; }
+.rich li.task-item input { margin: calc(.9em - 6.5px) 0 0; width: 13px; height: 13px; flex: none; }
+.sk-area ul[data-type="taskList"] input { margin: 0; width: 13px; height: 13px; }
+.mention { background: var(--accent-weak); color: var(--accent); border-radius: 4px; padding: 0 .25em; font-weight: 500; }
+.rich a, .sk-area a { color: var(--accent); }
+
+/* ツールバー: 選んでいるもの（画像・表）に応じた操作 */
+.sk-ctx { background: var(--accent-weak); align-items: center; }
+.sk-ctx[hidden] { display: none; }
+.sk-ctx-label { font-size: .75rem; color: var(--muted); padding: 0 4px 0 2px; }
+.sk-tb-hint { margin-left: auto; align-self: center; font-size: .72rem; color: var(--muted); padding-right: 4px; }
+.sk-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line); vertical-align: middle; }
+.sk-swatch.none { background: linear-gradient(135deg, transparent 45%, var(--danger) 45%, var(--danger) 55%, transparent 55%); }
+.sk-pop-icon { display: inline-block; width: 1.8em; color: var(--muted); font-size: .8rem; }
+.sk-pop-hint { margin-left: .6em; color: var(--muted); font-size: .75rem; }
+.sk-mention-box { max-height: 320px; overflow-y: auto; }
+
+/* コードブロック（言語の選択） */
+.sk-code { position: relative; }
+.sk-code-lang { position: absolute; top: 6px; left: 8px; font-size: .72rem; padding: 1px 4px; background: #1e293b; color: #cbd5e1; border-color: #334155; z-index: 1; }
+.sk-code pre { padding-top: 2rem; }
+
+/* 画像の寄せ方向・大きさ */
+.sk-area [data-resize-container][data-node="image"] { margin: .4em 0; }
+.sk-area [data-resize-container][data-align="center"] { justify-content: center; }
+.sk-area [data-resize-container][data-align="right"] { justify-content: flex-end; }
+.sk-area [data-resize-handle] { width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; opacity: 0; transition: opacity .15s; z-index: 2; }
+.sk-area [data-resize-handle="left"], .sk-area [data-resize-handle="right"] { width: 6px; height: 36px; top: calc(50% - 18px) !important; border-radius: 3px; }
+.sk-area [data-resize-container]:hover [data-resize-handle], .sk-area .ProseMirror-selectednode [data-resize-handle],
+.sk-area [data-resize-state="true"] [data-resize-handle] { opacity: 1; }
+.sk-area [data-resize-handle="left"], .sk-area [data-resize-handle="right"] { cursor: ew-resize; }
+.sk-area [data-resize-handle="bottom-left"] { cursor: nesw-resize; }
+.sk-area [data-resize-handle="bottom-right"] { cursor: nwse-resize; }
+.sk-area img.ProseMirror-selectednode, .sk-area .ProseMirror-selectednode img { outline: 2px solid var(--accent); }
+.rich img { height: auto; }
+.rich img[data-align="center"] { display: block; margin-left: auto; margin-right: auto; }
+.rich img[data-align="right"] { display: block; margin-left: auto; }
+.rich img[data-align="left"] { display: block; }
+
+/* 表のセルの背景色（色名で保存し、ここで色を決める） */
+[data-bg="gray"] { --cell: rgba(100, 116, 139, .16); } [data-bg="brown"] { --cell: rgba(146, 64, 14, .16); }
+[data-bg="orange"] { --cell: rgba(234, 88, 12, .18); } [data-bg="yellow"] { --cell: rgba(234, 179, 8, .24); }
+[data-bg="green"] { --cell: rgba(22, 163, 74, .18); } [data-bg="blue"] { --cell: rgba(37, 99, 235, .16); }
+[data-bg="purple"] { --cell: rgba(147, 51, 234, .16); } [data-bg="pink"] { --cell: rgba(219, 39, 119, .16); }
+[data-bg="red"] { --cell: rgba(220, 38, 38, .16); }
+.rich td[data-bg], .rich th[data-bg], .sk-area td[data-bg], .sk-area th[data-bg], .sk-swatch[data-bg] { background: var(--cell); }
+.sk-area .selectedCell { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* シンタックスハイライト（コードブロックは常に暗い背景） */
+.hljs-comment, .hljs-quote { color: #7d8799; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-meta .hljs-keyword { color: #c792ea; }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-meta .hljs-string { color: #c3e88d; }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_ { color: #f78c6c; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: #82aaff; }
+.hljs-title.class_, .hljs-type, .hljs-built_in { color: #ffcb6b; }
+.hljs-attr, .hljs-attribute, .hljs-property, .hljs-selector-attr, .hljs-selector-class, .hljs-selector-id { color: #89ddff; }
+.hljs-name, .hljs-tag, .hljs-deletion { color: #f07178; }
+.hljs-meta, .hljs-template-variable, .hljs-variable, .hljs-params { color: #eeffff; }
+.hljs-emphasis { font-style: italic; } .hljs-strong { font-weight: bold; }
+.mention.group { background: rgba(147, 51, 234, .14); color: #9333ea; }
+:root[data-theme="dark"] .mention.group { color: #c084fc; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mention.group { color: #c084fc; } }
+
+/* 外部サービス（skiwi・skawau）へのリンク（名前を出したもの） */
+a.ext-link { background: var(--accent-weak); border-radius: 4px; padding: 0 .3em; text-decoration: none; }
+a.ext-link:hover { text-decoration: underline; }
+.ext-title { margin-left: .3em; font-size: .85em; color: var(--muted); }
+a.ext-link.grow { flex: 0 1 auto; margin-right: auto; }

@@ -1,0 +1,22 @@
+# /etc/systemd/system/stui.service
+[Unit]
+Description=stui application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=stui
+Group=stui
+EnvironmentFile=/etc/stui/stui.env
+ExecStart=/usr/bin/java -Xms512m -Xmx1g -cp '/opt/stui/current/lib/*' stui.app.Main
+# 停止時は処理中のリクエストを少し待ってから終わる（他ノードがそのまま受ける）
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

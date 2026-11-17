@@ -1,0 +1,244 @@
+/* stui の全体のスタイル。色は変数にまとめ、ダークモードでは差し替える */
+:root {
+  --bg: #ffffff;
+  --fg: #1e293b;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --side: #f8fafc;
+  --hover: #f1f5f9;
+  --accent: #2563eb;
+  --accent-weak: rgba(37, 99, 235, .12);
+  --danger: #dc2626;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --col: #f1f5f9;
+  --card: #ffffff;
+  --shadow: 0 4px 16px rgba(15, 23, 42, .12);
+  --header: 52px;
+  --surface: #ffffff;
+  --code-bg: #0f172a;
+  --code-line: #0f172a;
+  color-scheme: light;
+}
+/* 手動の切り替え（data-theme）がなければ OS の設定に従う */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --line: #283548;
+    --side: #131d33;
+    --hover: #1e293b;
+    --accent: #60a5fa;
+    --accent-weak: rgba(96, 165, 250, .16);
+    --danger: #f87171;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --col: #111b2f;
+    --card: #1a2540;
+    --shadow: 0 4px 18px rgba(0, 0, 0, .45);
+    color-scheme: dark;
+    --surface: #1c273d;
+    --code-bg: #0a1020;
+    --code-line: #2e3d57;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f172a;
+  --fg: #e2e8f0;
+  --muted: #94a3b8;
+  --line: #283548;
+  --side: #131d33;
+  --hover: #1e293b;
+  --accent: #60a5fa;
+  --accent-weak: rgba(96, 165, 250, .16);
+  --danger: #f87171;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --col: #111b2f;
+  --card: #1a2540;
+  --shadow: 0 4px 18px rgba(0, 0, 0, .45);
+  color-scheme: dark;
+  --surface: #1c273d;
+  --code-bg: #0a1020;
+  --code-line: #2e3d57;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  font-size: 15px; line-height: 1.5; -webkit-text-size-adjust: 100%;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1 { font-size: 1.45rem; margin: .2rem 0 1rem; }
+h2 { font-size: 1.15rem; margin: 1.4rem 0 .6rem; }
+h3 { font-size: 1rem; margin: 1rem 0 .4rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+
+button, .btn {
+  font: inherit; font-size: .9rem; color: inherit; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 7px; padding: .35rem .8rem; cursor: pointer; line-height: 1.4; display: inline-flex; align-items: center; gap: .3rem;
+  white-space: nowrap; text-decoration: none;
+}
+button:hover, .btn:hover { background: var(--hover); text-decoration: none; }
+button:disabled { opacity: .5; cursor: default; }
+button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+button.ghost { border-color: transparent; background: transparent; }
+button.ghost:hover { background: var(--hover); }
+button.small, .btn.small { font-size: .8rem; padding: .15rem .5rem; }
+
+input, select, textarea {
+  font: inherit; font-size: .92rem; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: .35rem .6rem;
+  max-width: 100%;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+input[type="checkbox"], input[type="radio"] { width: auto; }
+textarea { width: 100%; min-height: 5rem; resize: vertical; }
+textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; min-height: 12rem; }
+label { font-size: .88rem; }
+.field { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .8rem; }
+.field > span { font-size: .8rem; color: var(--muted); }
+.row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); }
+.small { font-size: .82rem; }
+.error { color: var(--danger); }
+.ok { color: var(--ok); }
+.right { margin-left: auto; }
+.nowrap { white-space: nowrap; }
+.hidden { display: none !important; }
+
+table.list { width: 100%; border-collapse: collapse; font-size: .88rem; }
+table.list th, table.list td { text-align: left; padding: .45rem .55rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.list th { font-size: .78rem; color: var(--muted); font-weight: 600; background: var(--side); position: sticky; top: 0; }
+table.list tr.clickable { cursor: pointer; }
+table.list tr.clickable:hover td { background: var(--hover); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+
+.badge { display: inline-flex; align-items: center; gap: .25em; font-size: .74rem; padding: .05rem .5rem; border-radius: 999px; background: var(--hover); color: var(--fg); white-space: nowrap; border: 1px solid transparent; }
+.badge.cat-todo { background: rgba(100, 116, 139, .15); }
+.badge.cat-in_progress { background: rgba(37, 99, 235, .15); color: var(--accent); }
+.badge.cat-waiting { background: rgba(217, 119, 6, .15); color: var(--warn); }
+.badge.cat-done { background: rgba(22, 163, 74, .15); color: var(--ok); }
+.label-chip { display: inline-block; font-size: .72rem; padding: .02rem .45rem; border-radius: 4px; color: #fff; white-space: nowrap; }
+.key { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: .7rem; font-weight: 600; flex: none; overflow: hidden; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.overdue { color: var(--danger); font-weight: 600; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
+.panel { border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; background: var(--bg); }
+.empty { text-align: center; color: var(--muted); padding: 2rem 1rem; }
+
+.tabs { display: flex; gap: .2rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; overflow-x: auto; scrollbar-width: none; }
+.tabs a, .tabs button { padding: .5rem .8rem; border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); white-space: nowrap; font-size: .9rem; }
+.tabs a:hover, .tabs button:hover { color: var(--fg); text-decoration: none; background: none; }
+.tabs .router-link-active, .tabs .active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chip { font-size: .82rem; padding: .2rem .7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.modal-bg { position: fixed; inset: 0; background: rgba(2, 6, 23, .62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 1000;
+  display: flex; align-items: flex-start; justify-content: center; padding: 6vh 1rem 1rem; overflow-y: auto; animation: scrim-in .15s ease-out; }
+/* マテリアルデザインの「浮いた面」: 背面より明るい面・大きな影・細い縁 */
+.modal { background: var(--surface); border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: 14px; width: 100%; max-width: 640px;
+  padding: 1.2rem 1.4rem; box-shadow: 0 11px 15px -7px rgba(0, 0, 0, .25), 0 24px 38px 3px rgba(0, 0, 0, .2), 0 9px 46px 8px rgba(0, 0, 0, .16);
+  animation: modal-in .18s cubic-bezier(.2, .8, .2, 1); }
+@keyframes scrim-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(12px) scale(.98) } to { opacity: 1; transform: none } }
+.modal h2 { margin-top: 0; }
+.modal .actions { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+
+.toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 2000; display: flex; flex-direction: column; gap: .5rem; max-width: min(380px, calc(100vw - 2rem)); }
+.toast { background: var(--fg); color: var(--bg); border-radius: 9px; padding: .6rem .9rem; box-shadow: var(--shadow); font-size: .88rem; display: flex; gap: .6rem; align-items: flex-start; animation: toast-in .2s ease-out; }
+.toast.error { background: var(--danger); color: #fff; }
+.toast button { color: inherit; border-color: transparent; background: transparent; padding: 0 .3rem; }
+@keyframes toast-in { from { transform: translateY(10px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.page { width: 100%; max-width: 1200px; margin: 0 auto; padding: 1.2rem 1.2rem 4rem; }
+.page.narrow { max-width: 860px; }
+.page.wide { max-width: none; }
+
+@media (max-width: 720px) {
+  body { font-size: 14px; }
+  .page { padding: .8rem .8rem 4rem; }
+  .hide-sp { display: none !important; }
+  .modal { padding: 1rem; }
+  .modal-bg { padding: 2vh .5rem .5rem; }
+}
+@media (min-width: 721px) {
+  .only-sp { display: none !important; }
+}
+
+/* 検索結果の抜粋のキーワード（pgroonga_snippet_html） */
+.snippet .keyword, .snippet span { background: rgba(250, 204, 21, .35); border-radius: 2px; color: inherit; }
+
+.modal.wide { max-width: 860px; }
+.modal.xwide { max-width: 1180px; }
+/* 入力欄の中のオートコンプリートは欄の幅に合わせる */
+.field .combo { width: 100%; min-width: 0; }
+
+/* ---------------------------------------------------------------- チャット */
+
+/* サイドバー（ライト・ダークとも濃い色） */
+:root {
+  --side-bg: #1f2a44; --side-fg: #f1f5f9; --side-muted: #b6c2d6; --side-hover: rgba(255, 255, 255, .09); --side-active: #2563eb;
+  --side-line: rgba(255, 255, 255, .1); --msg-hover: #f8fafc; --hl: #fef9c3; --pin-bg: #fffbeb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --side-bg: #0b1222; --side-active: #1d4ed8; --msg-hover: #131d33; --hl: #3b3410; --pin-bg: #221d0d; }
+}
+:root[data-theme="dark"] { --side-bg: #0b1222; --side-active: #1d4ed8; --msg-hover: #131d33; --hl: #3b3410; --pin-bg: #221d0d; }
+
+body { overflow: hidden; }
+.scroll-page { overflow-y: auto; height: 100%; max-width: none; width: 100%; padding-left: max(1.2rem, calc((100% - 900px) / 2)); padding-right: max(1.2rem, calc((100% - 900px) / 2)); }
+.page.narrow, .page:not(.scroll-page) { overflow-y: auto; height: 100%; }
+.check { display: flex; gap: .4rem; align-items: center; margin: .3rem 0; }
+.field input:not([type="checkbox"]):not([type="radio"]), .field select { width: 100%; }
+.field .check { font-size: .88rem; }
+
+/* ヘッダーのアイコン（RouterLink の a にはコンポーネントのスタイルが届かないため、ここで指定） */
+header.top a.icon { font-size: 1.1rem; padding: .2rem .4rem; border-radius: 7px; color: var(--fg); position: relative; flex: none; }
+header.top a.icon:hover { background: var(--hover); text-decoration: none; }
+header.top a.icon .dot { position: absolute; top: -4px; right: -6px; background: var(--danger); color: #fff; border-radius: 999px; font-size: .62rem;
+  padding: 0 .35rem; line-height: 1.4; }
+
+/* メッセージの本文（v-html で描くため、スコープなしのスタイル） */
+.rich p { margin: .1rem 0; }
+.rich > div > p:first-child { margin-top: 0; }
+.rich ul, .rich ol { margin: .2rem 0; padding-left: 1.4rem; }
+.rich blockquote { margin: .3rem 0; padding-left: .8rem; border-left: 3px solid var(--line); color: var(--muted); }
+.rich pre { margin: .3rem 0; }
+.rich img { max-width: min(100%, 420px); border-radius: 8px; }
+.rich .mention { background: var(--accent-weak); color: var(--accent); border-radius: 4px; padding: 0 .2rem; font-weight: 600; }
+.rich .mention.me { background: rgba(250, 204, 21, .35); color: inherit; }
+.rich a.channel-ref, .sk-area a.channel-ref { background: var(--accent-weak); border-radius: 4px; padding: 0 .2rem; font-weight: 600; }
+.rich .keyword { background: rgba(250, 204, 21, .45); border-radius: 2px; color: inherit; }
+.sys-text p { margin: 0; display: inline; }
+
+/* チャットの入力欄のエディタは低めに（入力に合わせて伸びる） */
+.composer .sk-editor { border: none; }
+.composer .sk-area .ProseMirror { min-height: 2.6rem; max-height: 40vh; overflow-y: auto; padding: .55rem .8rem; }
+.composer .sk-toolbar { border-bottom: 1px solid var(--line); padding: .15rem .3rem; }
+.composer .no-tb .sk-toolbar:not(.sk-ctx) { display: none; }
+.msg .rich { line-height: 1.55; }
+
+/* 線のアイコン（SVG をマスクにして文字の色で塗る）。<span class="ico ico-image"></span> */
+.ico { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -.18em; background: currentColor;
+  -webkit-mask: var(--ico) center / contain no-repeat; mask: var(--ico) center / contain no-repeat; }
+.ico-bookmark { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z'/%3E%3C/svg%3E"); }
+.ico-bookmark-fill { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z' fill='black'/%3E%3C/svg%3E"); }
+.ico-image { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21'/%3E%3C/svg%3E"); }
+.ico-video { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 11'/%3E%3Crect x='2' y='6' width='14' height='12' rx='2'/%3E%3C/svg%3E"); }
+.ico-paperclip { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 0 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8.5-8.5'/%3E%3C/svg%3E"); }
+.ico-thread { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z'/%3E%3Cpath d='M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1'/%3E%3C/svg%3E"); }
+
+/* 右上のユーザーのメニュー（項目は RouterLink もあるので、scoped ではなくここに書く） */
+.menu a { display: block; white-space: nowrap; padding: .45rem .7rem; border-radius: 6px; color: var(--fg); font-size: .92rem; text-decoration: none; }
+.menu a:hover { background: var(--hover); text-decoration: none; }
