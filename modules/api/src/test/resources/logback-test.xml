@@ -1,0 +1,8 @@
+<configuration>
+  <!-- テストのログ（observe で logback が入ったため. 設定がないと DEBUG まで出てうるさい） -->
+  <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder><pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern></encoder>
+  </appender>
+  <root level="WARN"><appender-ref ref="STDOUT"/></root>
+</configuration>

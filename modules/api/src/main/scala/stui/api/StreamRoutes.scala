@@ -42,7 +42,7 @@ final class EventFeed private (messages: MessageStore, activity: ActivityStore,
           _   <- ns.traverse_((u, _) => publish(FeedItem.Notified(u)))
         yield (evs.lastOption.fold(last)(_._1), (since :: ns.map(_._2)).max)
       def go(last: Long, since: Instant): IO[Nothing] =
-        IO.sleep(500.millis) *> step(last, since).handleErrorWith(e => IO.println(s"[stui] event feed failed: $e").as((last, since)))
+        IO.sleep(500.millis) *> step(last, since).handleErrorWith(e => stui.observe.Log.println(s"[stui] event feed failed: $e").as((last, since)))
           .flatMap((l, s) => go(l, s))
       go(start, now)
     }
@@ -99,7 +99,8 @@ final class StreamRoutes(feed: EventFeed, channels: ChannelStore, val sessions: 
               // ログアウト・ユーザーの無効化・キーの失効の後は流し続けない（1分ごとに確かめて切る）
               val revoked = Stream.awakeEvery[IO](60.seconds).evalMap(_ => sessions.fromRequest(req).map(_.isEmpty))
               val body = (Stream.emit(ServerSentEvent(retry = Some(5.seconds), comment = Some("hello"))) ++ events.merge(ping)).interruptWhen(revoked)
-              Ok(body).map(_.putHeaders("Cache-Control" -> "no-cache", "X-Accel-Buffering" -> "no"))
+              Ok(body.through(s => Stream.bracket(stui.observe.Metrics.upDown("stui.sse.connections", 1))(_ => stui.observe.Metrics.upDown("stui.sse.connections", -1)) >> s))
+                .map(_.putHeaders("Cache-Control" -> "no-cache", "X-Accel-Buffering" -> "no"))
             }
             }
         }

@@ -32,7 +32,8 @@ object Database:
     hc.setValidationTimeout(3000)
     hc.setKeepaliveTime(60000)
     hc.setMaxLifetime(600000)
-    HikariTransactor.fromHikariConfig[IO](hc)
+    // SQL ごとにトレースの子のスパンと所要時間のメトリクスを残す（skorimako）
+    HikariTransactor.fromHikariConfig[IO](hc, Some(stui.observe.DbTelemetry.logHandler))
 
 enum StoreError:
   case NotFound(what: String)
@@ -60,7 +61,7 @@ abstract class TxStore(xa: Transactor[IO]):
 object Periodic:
   /** initialDelay 待ってから action を動かし、以後 every ごとに繰り返す。失敗しても止めず、onError の文を出力する。 */
   def run(initialDelay: FiniteDuration, every: FiniteDuration)(onError: Throwable => String)(action: IO[Any]): IO[Nothing] =
-    IO.sleep(initialDelay) *> (action.void.handleErrorWith(e => IO.println(onError(e))) *> IO.sleep(every)).foreverM
+    IO.sleep(initialDelay) *> (action.void.handleErrorWith(e => stui.observe.Log.println(onError(e))) *> IO.sleep(every)).foreverM
 
 /** 複数ノードのうち1つだけで動かす処理のリース（job_lock）。 */
 final class JobLock(xa: Transactor[IO], holder: String):

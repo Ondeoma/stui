@@ -23,7 +23,7 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa):
     sql"""insert into app_user (id, sub, name, email, avatar_url, timezone, last_login_at)
           values (${UUID.randomUUID()}, $sub, $name, $email, $avatar, $timezone, now())
           on conflict (sub) do update set name = excluded.name, email = excluded.email,
-            avatar_url = case when app_user.avatar_key is not null then app_user.avatar_url else coalesce(excluded.avatar_url, app_user.avatar_url) end,
+            avatar_url = case when app_user.avatar_key is not null then app_user.avatar_url else excluded.avatar_url end,
             last_login_at = now()
           returning id, sub, name, email, avatar_url, is_admin, disabled, timezone, is_bot""".query[User].unique
   )

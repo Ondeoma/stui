@@ -7,7 +7,6 @@ import org.scalajs.dom
 import stui.shared.*
 
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
-import scala.scalajs.js
 import scala.util.{Failure, Success}
 
 // 個人設定: プロフィール・通知（デスクトップ・メール）・兄弟のサービスとの連携・APIキー（MCP）
@@ -73,7 +72,7 @@ def uploadAvatar(s: State, e: dom.Event): Unit = {
   val input = e.target.asInstanceOf[dom.HTMLInputElement]
   Option(input.files).filter(_.length > 0).map(_(0)).foreach { file =>
     s.uploading := true
-    val thumb = dom.window.asInstanceOf[js.Dynamic].stuiImage.squareThumb(file, 256).asInstanceOf[js.Promise[dom.File]].toFuture
+    val thumb = Images.squareThumb(file, 256)
     thumb.flatMap(f => Api.sendFile[Json]("/api/me/avatar", f)).onComplete { r =>
       s.uploading := false
       input.value = ""
@@ -159,6 +158,7 @@ def via(k: ApiKeyDto): String = k.client.fold("")(c => s"（$c 連携）")
     <section class="panel">
       <h2>通知</h2>
       <label class="check"><input type="checkbox" :checked="s.desktop.v" @change="setDesktop(s, Dom.checked(event))"> 画面を開いていないとき、デスクトップに通知を出す（この端末）</label>
+      <p><PushToggle /></p>
       <p class="muted small">チャンネルごとの通知（すべて・メンションだけ・通知しない・ミュート）は、各チャンネルの ⚙ から変えられます。
         メールは、通知を受けてから少し待っても画面で読まれなかったときだけ送ります。メールでも受け取る種類を選んでください。</p>
       <div class="chips">

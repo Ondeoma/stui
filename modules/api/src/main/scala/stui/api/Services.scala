@@ -13,20 +13,22 @@ import java.util.UUID
 import scala.concurrent.duration.*
 
 /** 通知（画面内・メール）。メールは少し待ってから送り、その間に画面で読んだら送らない。 */
-final class NotifyService(activity: ActivityStore, cfg: ApiConfig, mailDelaySeconds: Int):
+final class NotifyService(activity: ActivityStore, cfg: ApiConfig, mailDelaySeconds: Int, push: Option[stui.push.PushService] = None):
 
   /** 1人に通知する（ボット・無効なユーザーは呼び出し側で除く）。 */
   def send(kind: String, to: UUID, actor: Option[UUID], channelId: Option[UUID], messageId: Option[UUID], title: String, body: String,
       link: String, mail: Boolean = true): IO[Unit] =
-    (for
+    stui.observe.Telemetry.span("notify.send", "kind" -> kind)(for
       nid <- activity.notify(to, kind, channelId, messageId, actor, title, body.take(500))
+      // この端末で受け取る設定（PWA のプッシュ通知）にしていれば、ブラウザを閉じていても知らせる
+      _ <- push.traverse_(_.send(to, stui.push.PushMessage(title, body.take(500), link, Some(s"${channelId.getOrElse("")}:$kind"))).start.void)
       _ <- IO.whenA(mail) {
              val text = List(title, "", body.take(2000), "", s"${cfg.publicUrl}$link", "",
                "-- ", "stui（通知の設定は画面右上のメニュー →「個人設定」で変えられます）").mkString("\n")
              activity.enqueueMail(Some(to), None, Some(nid), s"[stui] $title", text,
                Some(s"$to:${channelId.getOrElse("")}:$kind"), mailDelaySeconds)
            }
-    yield ()).handleErrorWith(e => IO.println(s"[stui] notify failed: $e"))
+    yield ()).handleErrorWith(e => stui.observe.Log.println(s"[stui] notify failed: $e"))
 
   /** メールの送信ワーカー（30秒ごと）。既読になった通知・止めた種類のメールは送らない。 */
   def mailLoop(mailer: Option[Mailer]): IO[Nothing] =
@@ -42,7 +44,7 @@ final class NotifyService(activity: ActivityStore, cfg: ApiConfig, mailDelaySeco
                   case false =>
                     activity.mailTarget(uid, None).flatMap {
                       case None => IO.pure(OutboxResult.Skip("宛先のユーザーが無効か、メールアドレスがありません"))
-                      case Some((addr, name)) => m.send(Mail(addr, name, row.subject, row.body)).as(OutboxResult.Sent)
+                      case Some((addr, name)) => stui.observe.Telemetry.span("mail.send")(m.send(Mail(addr, name, row.subject, row.body))).as(OutboxResult.Sent).flatTap(_ => stui.observe.Metrics.count("stui.mails.sent"))
                     }
                 }
               case (None, Some(addr)) => m.send(Mail(addr, addr, row.subject, row.body)).as(OutboxResult.Sent)
@@ -77,6 +79,10 @@ final class ChatService(channels: ChannelStore, messages: MessageStore, users: U
 
   /** 人（またはAPIキー）としての投稿。 */
   def post(s: AuthSession, channelId: UUID, r: PostMessageReq): Res[MessageDto] =
+    stui.observe.Telemetry.span("chat.post", "channel.id" -> channelId.toString, "kind" -> (if r.rootId.isDefined then "reply" else "message"))(postImpl(s, channelId, r)).flatTap(res => IO.whenA(res.isRight)(stui.observe.Metrics.count("stui.messages.posted",
+      "kind" -> (if r.rootId.isDefined then "reply" else "message"), "via" -> (if s.isSession then "ui" else "api"))))
+
+  private def postImpl(s: AuthSession, channelId: UUID, r: PostMessageReq): Res[MessageDto] =
     access.channel(s, channelId, Need.Post).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) =>
@@ -105,7 +111,7 @@ final class ChatService(channels: ChannelStore, messages: MessageStore, users: U
             m <- messages.insert(NewMessage(c.id, realRoot, alsoChannel && realRoot.isDefined, author.user.id, kind, author.via, doc, text, props,
                    attachmentIds))
             v <- messages.view(m.id, author.user.id).map(_.get)
-            _ <- fanout(c, author, m, doc, text).handleErrorWith(e => IO.println(s"[stui] fanout failed: $e"))
+            _ <- stui.observe.Telemetry.span("chat.fanout")(fanout(c, author, m, doc, text)).handleErrorWith(e => stui.observe.Log.println(s"[stui] fanout failed: $e"))
           yield Right(v)
       }
 
@@ -166,7 +172,7 @@ final class ChatService(channels: ChannelStore, messages: MessageStore, users: U
         "url" -> s"${cfg.publicUrl}${link(c.id, x.id, x.rootId)}".asJson)),
       "at" -> java.time.Instant.now().asJson
     ).deepMerge(extra)
-    hooks.enqueue(c.id, c.isPublic, event, payload, text).void.handleErrorWith(e => IO.println(s"[stui] webhook enqueue failed: $e"))
+    hooks.enqueue(c.id, c.isPublic, event, payload, text).void.handleErrorWith(e => stui.observe.Log.println(s"[stui] webhook enqueue failed: $e"))
 
   // ---------------------------------------------------------------- 編集・削除・リアクション・ピン留め
 

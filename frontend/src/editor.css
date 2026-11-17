@@ -26,7 +26,7 @@
 .rich code, .sk-area code { background: var(--side); border-radius: 4px; padding: .1em .35em; font-size: .88em; }
 .rich pre, .sk-area pre { background: var(--code-bg); color: #e2e8f0; border: 1px solid var(--code-line); border-radius: 8px; padding: .8rem 1rem; overflow-x: auto;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03); }
-/* 表示: 言語名を左上に出す（data-lang は highlight.js が付ける） */
+/* 表示: 言語名を左上に出す（data-lang は Highlight.scala が付ける） */
 .rich pre[data-lang] { position: relative; padding-top: 1.7rem; }
 .rich pre[data-lang]::before { content: attr(data-lang); position: absolute; top: .35rem; left: .7rem; font-size: .68rem; color: #94a3b8; letter-spacing: .02em; }
 .rich pre code, .sk-area pre code { background: none; padding: 0; color: inherit; }

@@ -35,7 +35,7 @@ final class AuthRoutes(oidc: Option[OidcClient], users: UserStore, channels: Cha
 
   private def loggedIn(u: User, via: String): IO[ResponseCookie] =
     channels.listForUser(u.id).flatMap(cs => IO.whenA(cs.isEmpty)(channels.joinAutoChannels(u.id).void)) *>
-      sessions.issue(u).flatTap(_ => activity.audit(Some(u.id), via, "auth.login", None, Json.obj()))
+      sessions.issue(u).flatTap(_ => activity.audit(Some(u.id), via, "auth.login", None, Json.obj()) *> stui.observe.Metrics.count("stui.logins", "via" -> via))
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case req @ GET -> Root / "auth" / "login" =>

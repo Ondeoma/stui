@@ -1,4 +1,5 @@
 // エディタと表示で共有するハイライト（lowlight）。言語定義は loadLanguages() で後から読み込む。
+// 表示（.rich）のハイライトの DOM の処理は Scala.js（Highlight.scala）が行い、window.stuiLowlight を使う。
 import { createLowlight } from 'lowlight'
 
 export const lowlight = createLowlight()
@@ -23,3 +24,7 @@ export function loadLanguages() {
   }
   return loading
 }
+
+/** text をハイライトした結果（hast）。lang が無いか登録されていなければ自動判定。 */
+export const highlight = (lang, text) =>
+  (lang && lowlight.registered(lang) ? lowlight.highlight(lang, text) : lowlight.highlightAuto(text))

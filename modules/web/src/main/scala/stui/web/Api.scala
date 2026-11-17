@@ -17,15 +17,20 @@ final case class ApiError(status: Int, message: String) extends Exception(messag
 /** バックエンドの REST API. 401 はログイン画面へ、エラーは {"error": ...} の文言にする. */
 object Api {
 
-  private def request(method: dom.HttpMethod, url: String, body: Option[Json] = None): Future[Option[Json]] = {
-    val init = new dom.RequestInit {}
-    init.method = method
-    init.credentials = dom.RequestCredentials.`same-origin`
+  /** fetch の設定（同じオリジンの Cookie を付ける. body は JSON の文字列）. */
+  def init(method: dom.HttpMethod, body: Option[String] = None): dom.RequestInit = {
+    val i = new dom.RequestInit {}
+    i.method = method
+    i.credentials = dom.RequestCredentials.`same-origin`
     body.foreach { b =>
-      init.headers = js.Dictionary("Content-Type" -> "application/json")
-      init.body = b.noSpaces
+      i.headers = js.Dictionary("Content-Type" -> "application/json")
+      i.body = b
     }
-    dom.fetch(url, init).toFuture.flatMap { res =>
+    i
+  }
+
+  private def request(method: dom.HttpMethod, url: String, body: Option[Json] = None): Future[Option[Json]] =
+    dom.fetch(url, init(method, body.map(_.noSpaces))).toFuture.flatMap { res =>
       if (res.status == 401) {
         val back = dom.window.location.pathname + dom.window.location.search
         if (!dom.window.location.pathname.startsWith("/login"))
@@ -39,7 +44,6 @@ object Api {
       } else if (res.status == 204) Future.successful(None)
       else res.text().toFuture.map(t => if (t.isEmpty) None else Some(parse(t).fold(throw _, identity)))
     }
-  }
 
   private def as[A: Decoder](j: Option[Json]): A = j.getOrElse(Json.Null).as[A].fold(e => throw ApiError(0, e.getMessage), identity)
 
@@ -121,11 +125,9 @@ object Api {
   def sendFile[A: Decoder](url: String, file: dom.File): Future[A] = {
     val fd = new dom.FormData()
     fd.append("file", file, file.name)
-    val init = new dom.RequestInit {}
-    init.method = dom.HttpMethod.POST
-    init.credentials = dom.RequestCredentials.`same-origin`
-    init.body = fd
-    dom.fetch(url, init).toFuture.flatMap { res =>
+    val i = init(dom.HttpMethod.POST)
+    i.body = fd
+    dom.fetch(url, i).toFuture.flatMap { res =>
       res.text().toFuture.map { t =>
         val j = parse(t).getOrElse(Json.Null)
         if (res.ok) j.as[A].fold(e => throw ApiError(0, e.getMessage), identity)

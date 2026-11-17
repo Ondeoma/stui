@@ -81,7 +81,7 @@ skaka だけはスコープ `["read", "write"]`（会議室を作るため）、
 
 ### リンクの名前（skiwi・skawau・skea・skorimako）
 
-画面（`frontend/src/links.js`）がメッセージの中のリンクを探し、`POST /api/integrations/{サービス}/titles` `{"ids": [...]}` で問い合わせます。
+画面（`modules/web` の `LinkTitles.scala`）がメッセージの中のリンクを探し、`POST /api/integrations/{サービス}/titles` `{"ids": [...]}` で問い合わせます。
 stui のサーバーは本人のトークンで相手の API を呼び、60秒キャッシュします。
 
 | サービス | URL の形 | 相手の API |

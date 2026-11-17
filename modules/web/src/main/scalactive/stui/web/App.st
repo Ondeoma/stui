@@ -33,6 +33,7 @@ val routes: PathPatternRoutes = List(
 )
 
 def mounted(s: State): Unit = {
+  Fallback.install(routes)
   Api.clientConfig().foreach { c =>
     Store.config := Some(c)
     // skiwi・skawau・skea・skorimako と連携していれば、そのリンクに名前を出す
@@ -41,6 +42,7 @@ def mounted(s: State): Unit = {
   if (dom.window.location.pathname.startsWith("/login")) s.ready := true
   else Store.report(Api.me()) { me =>
     Store.me := Some(me)
+    Observe.setUser(me.id.toString)
     // 自分へのメンションを目立たせる
     val st = dom.document.createElement("style")
     st.textContent = s""".rich .mention[data-user-id="${me.id}"] { background: rgba(250, 204, 21, .4); color: inherit; }"""

@@ -1,7 +1,5 @@
 package stui.web
 
-import io.circe.Json
-import io.circe.parser.parse
 import io.github.ondeoma.scalactive.components.ComponentManager.*
 import org.scalajs.dom
 import stui.shared.*
@@ -10,7 +8,6 @@ import java.util.UUID
 import scala.concurrent.Future
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 import scala.scalajs.js
-import scala.scalajs.js.annotation.JSGlobal
 import scala.util.{Failure, Success}
 
 final case class Toast(id: Int, text: String, link: Option[String], error: Boolean)
@@ -341,87 +338,6 @@ object Fmt {
 
 }
 
-/** エディタ（frontend/src/editor.js の Tiptap）. */
-@js.native
-@JSGlobal("stuiEditor")
-private object EditorFacade extends js.Object {
-  def create(el: dom.Element, opts: js.Object): EditorHandle = js.native
-}
-
-@js.native
-trait EditorHandle extends js.Object {
-  def getJSON(): js.Any = js.native
-  def setJSON(j: js.Any): Unit = js.native
-  def isEmpty(): Boolean = js.native
-  def clear(): Unit = js.native
-  def focus(): Unit = js.native
-  def insertText(t: String): Unit = js.native
-  def pickFile(): Unit = js.native
-  def destroy(): Unit = js.native
-}
-
-object Editor {
-
-  import scala.scalajs.js.JSConverters.*
-
-  def toJs(j: Json): js.Any = js.JSON.parse(j.noSpaces)
-
-  def fromJs(a: js.Any): Json = parse(js.JSON.stringify(a)).getOrElse(Json.Null)
-
-  /**
-   * エディタを作る. channelId を渡すと @メンションの候補をそのチャンネルのメンバーから出す.
-   * upload を渡すと、画像・ファイルの貼り付けでそれを呼ぶ（Some を返すと本文に埋め込む. None なら埋め込まない）.
-   */
-  def create(el: dom.Element, content: Option[Json], placeholder: String, channelId: Option[UUID], onSubmit: () => Unit,
-             autofocus: Boolean = false, onChange: Json => Unit = _ => (), enterSubmit: Boolean = false,
-             upload: Option[dom.File => Future[Option[AttachmentDto]]] = None, onArrowUp: Option[() => Unit] = None,
-             toolbar: Boolean = true): EditorHandle = {
-    // メンションの候補: 人と、まとめて届くグループ（「グループ・3人」のように出す）
-    val mentions: js.Function1[String, js.Promise[js.Array[js.Object]]] = (q: String) => {
-      val ql = q.toLowerCase
-      val people = channelId.fold(Api.users(q))(Store.members)
-      val groups = channelId.fold(Future.successful(List.empty[MentionGroupDto]))(c => Store.mentionGroups(c).recover(_ => Nil))
-      people.zip(groups).map { (us, gs) =>
-        (us.filter(u => ql.isEmpty || u.name.toLowerCase.contains(ql)).map(u => js.Dynamic.literal(id = u.id.toString, label = u.name)) ++
-          gs.filter(g => ql.isEmpty || g.name.toLowerCase.contains(ql)).map(g => js.Dynamic.literal(id = g.id, label = g.name, icon = "👥",
-            hint = s"${if (g.id.startsWith("r:")) "チャンネルの全員" else "グループ"}・${g.count}人")))
-          .map(_.asInstanceOf[js.Object]).toJSArray
-      }.toJSPromise
-    }
-    val channels: js.Function1[String, js.Promise[js.Array[js.Object]]] = (q: String) => {
-      val ql = q.toLowerCase
-      Future.successful(Store.channels.v.filterNot(c => ChannelKind.isDm(c.kind)).filter(c => ql.isEmpty || c.name.toLowerCase.contains(ql))
-        .map(c => js.Dynamic.literal(id = c.id.toString, label = c.name, icon = if (c.kind == ChannelKind.Private) "🔒" else "#").asInstanceOf[js.Object])
-        .toJSArray).toJSPromise
-    }
-    val up: js.Any = upload match {
-      case None => null
-      case Some(f) =>
-        val g: js.Function1[dom.File, js.Promise[js.Any]] = (file: dom.File) =>
-          f(file).map {
-            case Some(a) => js.Dynamic.literal(url = a.url, name = a.fileName, image = a.contentType.startsWith("image/")).asInstanceOf[js.Any]
-            case None    => null.asInstanceOf[js.Any]
-          }.toJSPromise
-        g
-    }
-    val o = js.Dynamic.literal(
-      content = content.map(toJs).getOrElse(null),
-      placeholder = placeholder,
-      mentions = mentions,
-      channels = channels,
-      upload = up,
-      autofocus = autofocus,
-      enterSubmit = enterSubmit,
-      toolbar = toolbar,
-      onSubmit = (() => onSubmit()): js.Function0[Unit],
-      onChange = ((j: js.Any) => onChange(fromJs(j))): js.Function1[js.Any, Unit],
-      onArrowUp = onArrowUp.fold(null: js.Any)(f => (() => f()): js.Function0[Unit])
-    )
-    EditorFacade.create(el, o.asInstanceOf[js.Object])
-  }
-
-}
-
 /** 画面内のダイアログ（ブラウザ標準の confirm・prompt・alert の代わり）. 表示は parts/DialogHost.st. */
 final case class DialogReq(message: String, okLabel: String, danger: Boolean, input: Option[RV[String]], choices: List[(String, String)],
                            cancel: Boolean, onOk: String => Unit, onCancel: () => Unit)
@@ -451,15 +367,11 @@ object Dialog {
     if (ok) r.onOk(r.input.map(_.v).getOrElse("")) else r.onCancel()
   }
 
-  /** エディタ（JavaScript）から使う: window.stuiUi.prompt(message, default) → Promise(文字列 | null)、alert(message). */
-  def exposeToJs(): Unit = {
-    val prompt: js.Function2[String, String, js.Promise[js.Any]] = (message: String, default: String) =>
-      new js.Promise[js.Any]((resolve, _) =>
-        open(DialogReq(message, "OK", danger = false, Some(RV(Option(default).getOrElse(""))), Nil, cancel = true,
-          v => resolve(v), () => resolve(null))))
-    val alertF: js.Function1[String, Unit] = (m: String) => alert(m)
-    dom.window.asInstanceOf[js.Dynamic].stuiUi = js.Dynamic.literal(prompt = prompt, alert = alertF)
-  }
+  /** 文字の入力（エディタ用）. OK なら入力した値、キャンセルなら null の Promise. */
+  def promptJs(message: String, default: String): js.Promise[js.Any] =
+    new js.Promise[js.Any]((resolve, _) =>
+      open(DialogReq(message, "OK", danger = false, Some(RV(Option(default).getOrElse(""))), Nil, cancel = true,
+        v => resolve(v), () => resolve(null))))
 
 }
 
@@ -512,25 +424,5 @@ object Emojis {
 
   /** ":name:" ならカスタム絵文字の画像の URL. */
   def image(e: String): Option[String] = Reactions.customName(e).map(CustomEmoji.url)
-
-}
-
-/** 外部サービス（skiwi・skawau・skea・skorimako）へのリンクに名前を出す（frontend/src/links.js. 連携したサービスだけ動かす）. */
-object LinkTitles {
-
-  private var handles = Map.empty[String, js.Dynamic]
-
-  def start(svc: LinkServiceDto): Unit = if (svc.connected) handles.get(svc.provider) match {
-    case Some(h) => h.reset()
-    case None    => handles += svc.provider -> dom.window.asInstanceOf[js.Dynamic].stuiLinks.start(svc.provider, svc.url)
-  }
-
-  /** 連携しているサービスを問い合わせて動かす. */
-  def load(): scala.concurrent.Future[List[LinkServiceDto]] = {
-    import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
-    val f = Api.get[List[LinkServiceDto]]("/api/integrations/links")
-    f.foreach(_.foreach(start))
-    f
-  }
 
 }

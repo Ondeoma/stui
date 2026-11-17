@@ -87,7 +87,7 @@ final class WebhookService(hooks: HookStore, users: UserStore, channels: Channel
           })
         })
       }
-    }.handleErrorWith(e => IO.println(s"[stui] webhook reply failed: $e"))
+    }.handleErrorWith(e => stui.observe.Log.println(s"[stui] webhook reply failed: $e"))
 
   /**
    * 送信先が内部のネットワーク（ループバック・プライベート・リンクローカルなど）でないか。名前を引いた結果のすべての IP で確かめる。
@@ -109,7 +109,13 @@ final class WebhookService(hooks: HookStore, users: UserStore, channels: Channel
   def send(d: DeliveryRow): IO[(OutboxResult, Option[Int])] =
     publicHost(d.url).flatMap {
       case false => IO.pure((OutboxResult.Skip("送信先が内部のネットワークのため送りませんでした"), None))
-      case true  => deliver(d)
+      case true  => stui.observe.Telemetry.span("webhook.deliver", "webhook.event" -> d.event)(deliver(d))
+    }.flatTap { (r, _) =>
+      val result = r match
+        case OutboxResult.Sent     => "sent"
+        case _: OutboxResult.Retry => "retry"
+        case _                     => "skip"
+      stui.observe.Metrics.count("stui.webhook.deliveries", "result" -> result)
     }
 
   private def deliver(d: DeliveryRow): IO[(OutboxResult, Option[Int])] =

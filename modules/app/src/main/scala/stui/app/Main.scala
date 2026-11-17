@@ -16,6 +16,7 @@ import stui.api.*
 import stui.auth.{OidcClient, OidcConfig, SecretBox}
 import stui.db.*
 import stui.notify.{SmtpConfig, SmtpMailer}
+import stui.observe.{HttpClientTelemetry, HttpTelemetry, Metrics, RumRoutes, Telemetry}
 import stui.shared.ErrorDto
 import stui.storage.{S3BlobStore, S3Config}
 
@@ -117,6 +118,12 @@ object Config:
 
 object Main extends IOApp.Simple:
 
+  // ログにトレースの ID・操作したユーザーを載せるため、IOLocal の文脈を Java のライブラリから見えるようにする
+  // （IORuntime を作る前に設定する必要がある. オブジェクトの初期化は main より先に動く）
+  Telemetry.prepare()
+
+  private val version = Option(getClass.getPackage.getImplementationVersion).orElse(sys.env.get("APP_VERSION")).getOrElse("dev")
+
   private given org.typelevel.log4cats.LoggerFactory[IO] = org.typelevel.log4cats.slf4j.Slf4jFactory.create[IO]
 
   def run: IO[Unit] =
@@ -125,10 +132,13 @@ object Main extends IOApp.Simple:
       _   <- IO(java.security.Security.setProperty("networkaddress.cache.ttl", "30"))
       cfg <- Config.load
       n   <- migrateWithRetry(cfg)
-      _   <- IO.println(s"[stui] database migrated ($n migration(s) applied); node ${cfg.nodeId}")
+      _   <- stui.observe.Log.println(s"[stui] database migrated ($n migration(s) applied); node ${cfg.nodeId}")
       _ <- (for
+        _     <- Telemetry.resource("stui", version, runtime)
         xa    <- Database.transactor(cfg.db)
-        http  <- EmberClientBuilder.default[IO].withTimeout(30.seconds).build
+        _     <- gauges(xa)
+        // 外への呼び出しもトレースに出す（traceparent を付けて送る）
+        http  <- EmberClientBuilder.default[IO].withTimeout(30.seconds).build.map(HttpClientTelemetry(_))
         users    = new UserStore(xa)
         channels = new ChannelStore(xa)
         messages = new MessageStore(xa)
@@ -143,7 +153,9 @@ object Main extends IOApp.Simple:
         blobs <- blobStore(cfg)
         sess     = new SessionAuth(users, cfg.api)
         access   = new Access2(channels, messages)
-        notifier = new NotifyService(activity, cfg.api, cfg.mailDelaySeconds)
+        pushStore = new stui.push.PushStore(xa)
+        push    <- Resource.eval(stui.push.PushService.create(pushStore, http, cfg.api.publicUrl, "stui"))
+        notifier = new NotifyService(activity, cfg.api, cfg.mailDelaySeconds, Some(push))
         chat     = new ChatService(channels, messages, users, access, notifier, hooks, activity, cfg.api)
         webhooks = new WebhookService(hooks, users, channels, chat, http, cfg.api)
         sched    = new ScheduleService(schedule, messages, channels, users, chat, notifier, sess)
@@ -169,16 +181,19 @@ object Main extends IOApp.Simple:
             new AppRoutes(channels, users, chat, notifier, sess, access, cfg.api).routes <+>
             new StreamRoutes(feed, channels, sess, access).routes <+>
             new OAuthRoutes(new OAuthStore(xa), activity, sess, access, cfg.api).routes <+>
-            new LinkServiceRoutes(new IntegrationTokenStore(xa), http, box, cache, chat, sess, access, cfg.api).routes
+            new LinkServiceRoutes(new IntegrationTokenStore(xa), http, box, cache, chat, sess, access, cfg.api).routes <+>
+            RumRoutes.routes <+>
+            new PushRoutes(pushStore, push, sess, access).routes
         app = rest <+> new McpRoutes(rest, sess, cfg.api.publicUrl).routes
         all = cfg.staticDir.fold(app)(d => app <+> spa(d))
+        httpApp <- HttpTelemetry(ErrorHandling.Custom.recoverWith(Guards(all, cfg.api).orNotFound)(handler), List("/api", "/auth", "/mcp", "/oauth", "/hooks"))
         _ <- EmberServerBuilder.default[IO]
                .withHost(ipv4"0.0.0.0")
                .withPort(Port.fromInt(cfg.port).getOrElse(port"8080"))
                .withShutdownTimeout(5.seconds)
-               .withHttpApp(ErrorHandling.Custom.recoverWith(Guards(all, cfg.api).orNotFound)(handler))
+               .withHttpApp(httpApp)
                .build
-        _ <- Resource.eval(IO.println(s"[stui] listening on :${cfg.port} (${cfg.api.publicUrl})"))
+        _ <- Resource.eval(stui.observe.Log.println(s"[stui] listening on :${cfg.port} (${cfg.api.publicUrl})"))
       yield ()).useForever
     yield ()
 
@@ -186,8 +201,21 @@ object Main extends IOApp.Simple:
   private def migrateWithRetry(cfg: AppConfig, attempt: Int = 1): IO[Int] =
     Database.migrate(cfg.db).handleErrorWith { e =>
       if attempt >= 60 then IO.raiseError(e)
-      else IO.println(s"[stui] database not ready (${e.getMessage.take(120)}); retry $attempt/60") *> IO.sleep(2.seconds) *> migrateWithRetry(cfg, attempt + 1)
+      else stui.observe.Log.println(s"[stui] database not ready (${e.getMessage.take(120)}); retry $attempt/60") *> IO.sleep(2.seconds) *> migrateWithRetry(cfg, attempt + 1)
     }
+
+  /** DB から定期的に読むメトリクス（skorimako のダッシュボード・アラート用）。 */
+  private def gauges(xa: doobie.Transactor[IO]): Resource[IO, Unit] =
+    def q(sqlText: doobie.Fragment): IO[Long] = sqlText.query[Long].unique.transact(xa)
+    List(
+      Metrics.gauge("stui.users.total", "有効なユーザーの数（ボットを除く）")(q(sql"select count(*) from app_user where not disabled and not is_bot")),
+      Metrics.gauge("stui.users.active_24h", "24時間以内にログインしたユーザーの数")(q(sql"select count(*) from app_user where last_login_at > now() - interval '24 hours'")),
+      Metrics.gauge("stui.sessions.active", "有効なセッションの数")(q(sql"select count(*) from session where expires_at > now()")),
+      Metrics.gauge("stui.channels.total", "チャンネルの数")(q(sql"select count(*) from channel")),
+      Metrics.gauge("stui.messages.last_24h", "24時間以内の投稿の数")(q(sql"select count(*) from message where created_at > now() - interval '24 hours'")),
+      Metrics.gauge("stui.mail.outbox", "送信待ちのメールの数")(q(sql"select count(*) from mail_outbox where sent_at is null and not skipped")),
+      Metrics.gauge("stui.webhook.pending", "送信待ちの Webhook の数")(q(sql"select count(*) from webhook_delivery where done_at is null and not failed"))
+    ).sequence_
 
   /** ロードバランサー用のヘルスチェック。DB（プライマリ）に書けない状態なら 503。 */
   private def healthRoutes(xa: doobie.Transactor[IO], node: String): HttpRoutes[IO] = HttpRoutes.of[IO] {
@@ -204,16 +232,16 @@ object Main extends IOApp.Simple:
 
   private def blobStore(cfg: AppConfig): Resource[IO, Option[stui.storage.BlobStore]] = cfg.s3 match
     case Some(c) => S3BlobStore.resource(c).evalTap(_.ensureBucket).map(Some(_))
-    case None    => Resource.eval(IO.println("[stui] WARNING: S3_ENDPOINT が未設定のため、添付ファイルは使えません").as(None))
+    case None    => Resource.eval(stui.observe.Log.println("[stui] WARNING: S3_ENDPOINT が未設定のため、添付ファイルは使えません").as(None))
 
   private def startupNotes(cfg: AppConfig): IO[Unit] =
-    IO.whenA(cfg.smtp.isEmpty)(IO.println("[stui] WARNING: SMTP_HOST が未設定のため、メールは送りません")) *>
-      IO.whenA(cfg.oidc.isEmpty)(IO.println("[stui] WARNING: OIDC が未設定です。開発用のログイン（DEV_LOGIN）を使います。本番では使わないでください"))
+    IO.whenA(cfg.smtp.isEmpty)(stui.observe.Log.println("[stui] WARNING: SMTP_HOST が未設定のため、メールは送りません")) *>
+      IO.whenA(cfg.oidc.isEmpty)(stui.observe.Log.println("[stui] WARNING: OIDC が未設定です。開発用のログイン（DEV_LOGIN）を使います。本番では使わないでください"))
 
   private val handler: PartialFunction[Throwable, IO[Response[IO]]] = {
     case _: org.http4s.server.middleware.EntityLimiter.EntityTooLarge => PayloadTooLarge(ErrorDto("本文が大きすぎます"))
     case e =>
-    IO.println(s"[stui] unhandled error: $e") *> InternalServerError(ErrorDto("サーバーでエラーが発生しました"))
+    IO(org.slf4j.LoggerFactory.getLogger("stui").error("unhandled error", e)) *> InternalServerError(ErrorDto("サーバーでエラーが発生しました"))
   }
 
   /** 期限切れのセッション・古い通知・変更履歴・監査ログ・投稿されなかった添付を消す（1ノードだけ）。 */

@@ -1,6 +1,51 @@
 <configuration>
-  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-    <encoder><pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern></encoder>
+  <!--
+    アプリのログ.
+     - 標準出力: LOG_FORMAT=text（既定. 人が読む形）か json（1行1つの JSON. ログを集める仕組み向け）
+     - OTLP: OTEL_EXPORTER_OTLP_ENDPOINT（skorimako）があれば、トレースの ID・操作したユーザー付きで送る
+    トレースの ID（trace_id・span_id）と操作したユーザー（baggage.user.id・baggage.user.name）は MDC に入る.
+    LOG_LEVEL で全体の水準を変えられる（既定 INFO）.
+  -->
+  <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+
+  <appender name="STDOUT_text" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{24}%replace( trace=%X{trace_id}){' trace=$', ''}%replace( user=%X{baggage.user.id}){' user=$', ''}%replace( %X{baggage.user.name}){' $', ''} - %msg%n%ex</pattern>
+    </encoder>
   </appender>
-  <root level="INFO"><appender-ref ref="STDOUT"/></root>
+
+  <appender name="STDOUT_json" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="ch.qos.logback.classic.encoder.JsonEncoder">
+      <withSequenceNumber>false</withSequenceNumber>
+      <withNanoseconds>false</withNanoseconds>
+      <withContext>false</withContext>
+      <withFormattedMessage>true</withFormattedMessage>
+      <withMessage>false</withMessage>
+      <withArguments>false</withArguments>
+    </encoder>
+  </appender>
+
+  <!-- OTLP で送る（Telemetry.resource が SDK を設定するまでは貯めておく）. トレースの ID は自分で付けるので、MDC からは操作したユーザーだけ取る -->
+  <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+    <captureExperimentalAttributes>true</captureExperimentalAttributes>
+    <captureKeyValuePairAttributes>true</captureKeyValuePairAttributes>
+    <captureMdcAttributes>baggage.user.id,baggage.user.name</captureMdcAttributes>
+  </appender>
+
+  <!-- 出力の前に、トレースの ID と baggage（操作したユーザー）を MDC に入れる -->
+  <appender name="MAIN" class="io.opentelemetry.instrumentation.logback.mdc.v1_0.OpenTelemetryAppender">
+    <addBaggage>true</addBaggage>
+    <appender-ref ref="STDOUT_${LOG_FORMAT:-text}"/>
+    <appender-ref ref="OTEL"/>
+  </appender>
+
+  <!-- うるさいライブラリ -->
+  <logger name="org.http4s.ember" level="WARN"/>
+  <logger name="org.flywaydb" level="WARN"/>
+  <logger name="com.zaxxer.hikari" level="WARN"/>
+  <logger name="io.opentelemetry" level="WARN"/>
+
+  <root level="${LOG_LEVEL:-INFO}">
+    <appender-ref ref="MAIN"/>
+  </root>
 </configuration>
