@@ -34,7 +34,7 @@ final case class ApiConfig(
   def service(provider: String): Option[LinkService] = linkServices.find(_.provider == provider)
 
 /**
- * 連携する兄弟のサービス（skiwi・skawau・skea はリンクの名前、skaka は会議室の作成）。相手に stui をクライアントとして登録しておく。
+ * 連携する兄弟のサービス（skiwi・skawau・skea・skorimako はリンクの名前、skaka は会議室の作成）。相手に stui をクライアントとして登録しておく。
  * url は画面から開く URL、internalUrl はサーバーから呼ぶ URL（省略時は url）。
  */
 final case class LinkService(provider: String, url: String, clientId: String, clientSecret: String, internalUrl: Option[String] = None):

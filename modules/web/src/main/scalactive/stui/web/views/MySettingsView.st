@@ -58,6 +58,7 @@ def what(p: String): String = p match {
   case "skawau" => "メッセージに貼った skawau のファイル・フォルダの URL に、あなたの skawau の権限でファイル名を表示します"
   case "skea"   => "メッセージに貼った skea のタスクの URL に、あなたの skea の権限でタスクのタイトルと状態を表示します"
   case "skaka"  => "チャンネル・DM の入力欄のカメラのボタンで、あなたとして skaka に会議室を作り、その場に案内を投稿できます"
+  case "skorimako" => "メッセージに貼った skorimako のトレース・アラート・ダッシュボードの URL に、あなたの skorimako の権限で名前と状態を表示します"
   case _        => "メッセージに貼った skiwi のページの URL に、あなたの skiwi の権限でページのタイトルを表示します"
 }
 

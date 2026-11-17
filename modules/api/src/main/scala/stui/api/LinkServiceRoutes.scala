@@ -20,7 +20,7 @@ import scala.concurrent.duration.*
 /**
  * 兄弟のサービスとの連携（docs/integrations.md）。
  * 各ユーザーが OAuth 2.0（認可コード + PKCE）で相手のサービスを許可し、stui は本人の権限で、貼られたリンク先の名前
- * （skiwi のページのタイトル・skawau のファイル名・skea のタスクのタイトル）を読み、skaka に会議室を作る。
+ * （skiwi のページのタイトル・skawau のファイル名・skea のタスクのタイトル・skorimako のトレースやアラートの名前と状態）を読み、skaka に会議室を作る。
  * トークンは APP_SECRET の鍵で暗号化して保存する。
  */
 final class LinkServiceRoutes(store: IntegrationTokenStore, http: Client[IO], box: SecretBox, cache: LinkServiceRoutes.Cache,
@@ -204,6 +204,15 @@ object LinkServiceRoutes:
       LinkTitleDto(k, s"$k $t", Some(if done then "✅" else "📋"))
     }
 
+  /** skorimako: {"links":[{"id","kind","title","summary","status","icon"}]}（id は traces/…・alerts/…・dashboards/…） */
+  private def skorimakoLink(j: Json): Option[LinkTitleDto] =
+    (field[String](j, "id"), field[String](j, "title")).mapN { (id, t) =>
+      val summary = field[String](j, "summary").filter(_.nonEmpty)
+      LinkTitleDto(id, summary.fold(t)(x => s"$t（$x）"), field[String](j, "icon").orElse(Some("📈")))
+    }
+
+  private val skorimakoId = "^(traces/[0-9a-f]{1,64}|(alerts|dashboards)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$".r
+
   /** skawau: {"files":[{"id","name","folder"}]} */
   private def skawauFile(j: Json): Option[LinkTitleDto] =
     (field[UUID](j, "id"), field[String](j, "name")).mapN((id, n) => LinkTitleDto(id.toString, n, Some(FileIcons.of(n, field[Boolean](j, "folder").contains(true)))))
@@ -213,9 +222,11 @@ object LinkServiceRoutes:
     "skiwi"  -> Kind("skiwi", "read", "/api/pages/lookup", "ids", "pages", skiwiPage, isUuid),
     "skawau" -> Kind("skawau", "read", "/api/files/lookup", "ids", "files", skawauFile, isUuid),
     "skea"   -> Kind("skea", "read", "/api/tasks/lookup", "keys", "tasks", skeaTask, _.matches("^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$")),
+    // skorimako（オブザーバビリティ）: トレース・アラート・ダッシュボードの名前と状態
+    "skorimako" -> Kind("skorimako", "read", "/api/links/titles", "ids", "links", skorimakoLink, skorimakoId.matches),
     // skaka は会議室を作るだけ（リンクの名前は出さない）
     "skaka"  -> Kind("skaka（Web 会議）", "read write", "", "ids", "rooms", _ => None, _ => false)
   )
 
   /** 環境変数を読む順。 */
-  val providers: List[String] = List("skiwi", "skawau", "skea", "skaka")
+  val providers: List[String] = List("skiwi", "skawau", "skea", "skaka", "skorimako")

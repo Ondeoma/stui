@@ -8,6 +8,7 @@ const PATHS = {
   skiwi: `/w/${UUID}/p/(${UUID})`,                // ページ
   skawau: `/(?:view|office|files)/(${UUID})`,     // ファイル・フォルダ
   skea: `/(?:p/[A-Za-z0-9]+/)?tasks/([A-Za-z][A-Za-z0-9]{1,9}-[0-9]+)`, // タスク（STUI-12）
+  skorimako: `/(traces/[0-9a-fA-F]{1,64}|(?:alerts|dashboards)/${UUID})`, // トレース・アラート・ダッシュボード（ID は traces/… の形）
 }
 
 // ID の大文字・小文字をそろえる（タスクIDは大文字、UUID は小文字）
@@ -17,7 +18,7 @@ export function startLinkTitles(provider, base) {
   const path = PATHS[provider]
   if (!path) return { reset: () => {} }
   const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + path + '(?:[/?#]|$)')
-  const key = provider // data-skiwi・data-skawau・data-skea に状態を持つ
+  const key = provider // data-skiwi・data-skawau・data-skea・data-skorimako に状態を持つ
   let enabled = true
   let timer = null
   const waiting = new Map() // id -> [a]

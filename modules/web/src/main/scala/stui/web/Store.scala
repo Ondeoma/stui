@@ -515,7 +515,7 @@ object Emojis {
 
 }
 
-/** 外部サービス（skiwi・skawau・skea）へのリンクに名前を出す（frontend/src/links.js. 連携したサービスだけ動かす）. */
+/** 外部サービス（skiwi・skawau・skea・skorimako）へのリンクに名前を出す（frontend/src/links.js. 連携したサービスだけ動かす）. */
 object LinkTitles {
 
   private var handles = Map.empty[String, js.Dynamic]

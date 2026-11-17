@@ -35,7 +35,7 @@ val routes: PathPatternRoutes = List(
 def mounted(s: State): Unit = {
   Api.clientConfig().foreach { c =>
     Store.config := Some(c)
-    // skiwi・skawau・skea と連携していれば、そのリンクに名前を出す
+    // skiwi・skawau・skea・skorimako と連携していれば、そのリンクに名前を出す
     if (c.linkServices.nonEmpty) LinkTitles.load()
   }
   if (dom.window.location.pathname.startsWith("/login")) s.ready := true

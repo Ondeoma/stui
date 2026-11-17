@@ -103,7 +103,7 @@
 :root[data-theme="dark"] .mention.group { color: #c084fc; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mention.group { color: #c084fc; } }
 
-/* 外部サービス（skiwi・skawau）へのリンク（名前を出したもの） */
+/* 外部サービス（skiwi・skawau・skea・skorimako）へのリンク（名前を出したもの） */
 a.ext-link { background: var(--accent-weak); border-radius: 4px; padding: 0 .3em; text-decoration: none; }
 a.ext-link:hover { text-decoration: underline; }
 .ext-title { margin-left: .3em; font-size: .85em; color: var(--muted); }

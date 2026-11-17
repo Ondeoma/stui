@@ -21,7 +21,8 @@ stui は、チームのためのコミュニケーションツールです（Mat
 - **Webhook**: 受信（Slack・Mattermost と同じ形の JSON でチャンネルに投稿）、送信（イベントを署名付きで POST。応答の text で返信。トリガーの語）
 - **自動同期**: 変更はサーバーから画面へ即座に知らせる（Server-Sent Events。つながらないときは10秒ごとに確認）
 - **兄弟のサービスとの連携**（OAuth）: skea・skiwi・skawau・skuaka・skaka からの通知を DM・チャンネルで受ける。
-  メッセージに貼った skiwi のページ・skawau のファイル・skea のタスクの URL に名前を出す（[docs/integrations.md](docs/integrations.md)）
+  メッセージに貼った skiwi のページ・skawau のファイル・skea のタスク・skorimako のトレースやアラートの URL に名前を出す（[docs/integrations.md](docs/integrations.md)）。
+  skorimako（オブザーバビリティ）のアラートを、受信 Webhook でチャンネルに、OAuth で各自の DM に受ける
 - **API・AI**: ユーザーごとのスコープ付き API キー、REST API、MCP（AI から画面と同じ操作ができる）
 - **認証・権限**: OIDC、システム管理者・一般、チャンネルのメンバー・管理者
 - **冗長化**: アプリはステートレスで複数ノードで動く。PostgreSQL は Patroni、添付は S3 互換ストレージ

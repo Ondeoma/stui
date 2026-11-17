@@ -7,7 +7,7 @@ stui は兄弟のサービス（[skea](https://github.com/Ondeoma/skea)（タス
 | 向き | 使いみち | stui の役割 |
 |---|---|---|
 | 兄弟 → stui | 各種の通知（タスクの担当・Wiki の更新・予定のリマインドなど）を stui の DM やチャンネルに送る。stui のメッセージのリンクに概要を出す | 認可サーバー（`/oauth/*`） |
-| stui → 兄弟 | メッセージに貼った skiwi のページ・skawau のファイル・skea のタスクの URL に名前を出す。skaka に会議室をすぐ作る | クライアント（`/api/integrations/{サービス}/*`） |
+| stui → 兄弟 | メッセージに貼った skiwi のページ・skawau のファイル・skea のタスク・skorimako のトレースやアラートの URL に名前を出す。skaka に会議室をすぐ作る | クライアント（`/api/integrations/{サービス}/*`） |
 
 どちらも、トークンは「そのユーザー自身の権限」で発行されます。見られないものは見えません。
 
@@ -64,6 +64,7 @@ stui は兄弟のサービス（[skea](https://github.com/Ondeoma/skea)（タス
 | `SKAWAU_URL`・`SKAWAU_CLIENT_ID`・`SKAWAU_CLIENT_SECRET` | skawau のファイル・フォルダの名前 |
 | `SKEA_URL`・`SKEA_CLIENT_ID`・`SKEA_CLIENT_SECRET` | skea のタスクのタイトルと状態 |
 | `SKAKA_URL`・`SKAKA_CLIENT_ID`・`SKAKA_CLIENT_SECRET` | skaka の会議室の作成 |
+| `SKORIMAKO_URL`・`SKORIMAKO_CLIENT_ID`・`SKORIMAKO_CLIENT_SECRET` | skorimako のトレース・アラート・ダッシュボードの名前と状態 |
 | `*_INTERNAL_URL` | サーバーから呼ぶ URL（省略時は `*_URL`。コンテナの中から呼ぶときなど） |
 
 相手のサービスの `OAUTH_CLIENTS` に stui を登録します。`redirectUri` は `{stui の URL}/api/integrations/{サービス}/callback`。
@@ -78,7 +79,7 @@ skaka だけはスコープ `["read", "write"]`（会議室を作るため）、
 - `GET /api/integrations/{サービス}/callback`: コードをトークンに替えて保存し、個人設定へ戻る
 - `DELETE /api/integrations/{サービス}/connection`: 相手の `/oauth/revoke` を呼んでから消す
 
-### リンクの名前（skiwi・skawau・skea）
+### リンクの名前（skiwi・skawau・skea・skorimako）
 
 画面（`frontend/src/links.js`）がメッセージの中のリンクを探し、`POST /api/integrations/{サービス}/titles` `{"ids": [...]}` で問い合わせます。
 stui のサーバーは本人のトークンで相手の API を呼び、60秒キャッシュします。
@@ -88,6 +89,7 @@ stui のサーバーは本人のトークンで相手の API を呼び、60秒�
 | skiwi | `/w/{ワークスペース}/p/{ページID}` | `POST /api/pages/lookup {ids}` → `{pages: [{id, title, icon}]}` |
 | skawau | `/view/{ID}`・`/office/{ID}`・`/files/{ID}` | `POST /api/files/lookup {ids}` → `{files: [{id, name, folder}]}` |
 | skea | `/tasks/{タスクID}`・`/p/{キー}/tasks/{タスクID}` | `POST /api/tasks/lookup {keys}` → `{tasks: [{key, title, status: {name, category}}]}` |
+| skorimako | `/traces/{トレースID}`・`/alerts/{ID}`・`/dashboards/{ID}` | `POST /api/links/titles {ids: ["traces/…"]}` → `{links: [{id, title, summary, icon}]}`（「web: GET /orders（80ms・スパン 3）」「🔴 エラーが多い（発生中・値 42）」） |
 
 リンクの文字が URL のままなら名前に置き換え、文字を書いたリンクは名前を横に添えます。編集中のエディタの中は書き換えません。
 
