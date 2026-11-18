@@ -23,7 +23,8 @@ stui は、チームのためのコミュニケーションツールです（Mat
 - **兄弟のサービスとの連携**（OAuth）: skea・skiwi・skawau・skuaka・skaka からの通知を DM・チャンネルで受ける。
   メッセージに貼った skiwi のページ・skawau のファイル・skea のタスク・skorimako のトレースやアラートの URL に名前を出す（[docs/integrations.md](docs/integrations.md)）。
   skorimako（オブザーバビリティ）のアラートを、受信 Webhook でチャンネルに、OAuth で各自の DM に受ける
-- **API・AI**: ユーザーごとのスコープ付き API キー、REST API、MCP（AI から画面と同じ操作ができる）
+- **API・AI**: ユーザーごとのスコープ付き API キー、REST API、MCP（AI から画面と同じ操作ができる）。
+  外部の AI エージェント（skakapo）用の、管理画面で作るエージェント専用アカウント
 - **認証・権限**: OIDC、システム管理者・一般、チャンネルのメンバー・管理者
 - **冗長化**: アプリはステートレスで複数ノードで動く。PostgreSQL は Patroni、添付は S3 互換ストレージ
 - レスポンシブ対応（スマホの幅ではサイドバーを引き出す）、ダークモード
@@ -155,6 +156,37 @@ claude mcp add --transport http stui https://stui.example.com/mcp --header "Auth
 
 MCP のツール: `list_channels`・`read_channel`・`read_thread`・`post_message`・`add_reaction`・`search_messages`・`list_threads`・
 `set_reminder`・`create_meeting`・`list_notifications`・`get_me`、および画面でできるすべての操作のための `list_api_endpoints`・`call_api`。
+
+### エージェント専用アカウント
+
+skakapo などの外部の AI エージェントが MCP・REST API を使うための、ログインしないアカウントです（人の APIキーを借りずに済む）。
+システム管理者が「管理」→「エージェント」で作り、APIキーを発行します。
+
+- 中身はボット（`is_bot`）の一種で、sub は `bot:agent:<UUID>`、メールはありません。OIDC・開発用のログインではこの sub にならず
+  （OIDC は `bot:` で始まる sub を断る）、同じメールの IdP のユーザーに乗っ取られることもありません。
+- エージェントは**このアカウント自身の権限**で動き、投稿・変更はこのアカウントが行ったものとして記録されます。
+  公開チャンネルにはエージェントが自分で参加できます（`POST /api/channels/{id}/join`）。非公開チャンネルは管理画面の「チャンネルに参加させる」で参加させます。
+  ボットなので通知（メール・プッシュ）は届かず、メンションの候補にも出ません。
+- キーのスコープは `read`・`write` だけです（`admin` は付けられません）。無効にしたアカウントのキー・取り消したキーは使えなくなります。
+- 管理の API（`/api/admin/agents…`）は管理者の画面（Cookie のセッション）からだけ使えます。APIキーでは admin スコープがあっても使えません。
+  操作は監査ログ（`agent.create`・`agent.update`・`agent.api_key.create`・`agent.api_key.revoke`・`agent.channel.join`・`agent.channel.leave`）に残ります。
+
+設定の手順:
+
+1. 「管理」→「エージェント」でアカウントを作る（名前の例: skakapo）。
+2. 「チャンネルに参加させる」で、エージェントに使わせる非公開チャンネルを選ぶ（公開チャンネルはエージェントが自分で参加できる）。
+3. 「APIキーを発行」でスコープ（読むだけなら `read`、投稿もさせるなら `read`・`write`）と有効期限を選んで発行し、表示されたキーをコピーする（二度と表示されない）。
+4. skakapo の管理画面の「サービス」→ stui →「エージェント専用アカウント」に貼り付ける。
+
+| メソッド | パス | 内容 |
+|---|---|---|
+| GET | `/api/admin/agents` | 一覧（APIキー（取り消したものも）と参加しているチャンネルつき。キーのハッシュは返さない） |
+| POST | `/api/admin/agents` | 作る `{name}`（1〜60 文字） |
+| PATCH | `/api/admin/agents/{id}` | 名前の変更・無効化 `{name?, disabled?}` |
+| POST | `/api/admin/agents/{id}/keys` | APIキーを発行 `{name, scopes, expiresInDays?}`（平文のキーは応答で1回だけ返す） |
+| DELETE | `/api/admin/agents/{id}/keys/{keyId}` | APIキーを取り消す |
+| POST | `/api/admin/agents/{id}/channels` | チャンネルに参加させる `{channelIds}` |
+| DELETE | `/api/admin/agents/{id}/channels/{channelId}` | チャンネルから外す |
 
 受信の Webhook（チャンネルの ⚙ →「連携・定期メッセージ」で作る）:
 

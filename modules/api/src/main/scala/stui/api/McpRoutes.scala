@@ -82,7 +82,14 @@ object ApiCatalog:
     Endpoint("GET", "/api/admin/users", "ユーザーの一覧（管理者）"),
     Endpoint("PATCH", "/api/admin/users/{userId}", "ユーザーを変える（管理者） {isAdmin?, disabled?}"),
     Endpoint("GET", "/api/admin/channels", "すべてのチャンネル（管理者）"),
-    Endpoint("GET", "/api/admin/audit", "監査ログ（管理者）")
+    Endpoint("GET", "/api/admin/audit", "監査ログ（管理者）"),
+    Endpoint("GET", "/api/admin/agents", "エージェント専用アカウントの一覧（管理者・画面からのみ。キーと参加チャンネルつき）"),
+    Endpoint("POST", "/api/admin/agents", "エージェント専用アカウントを作る（管理者・画面からのみ） {name}"),
+    Endpoint("PATCH", "/api/admin/agents/{agentId}", "エージェント専用アカウントを変える（管理者・画面からのみ） {name?, disabled?}"),
+    Endpoint("POST", "/api/admin/agents/{agentId}/keys", "エージェント専用アカウントの APIキーを発行（管理者・画面からのみ） {name, scopes: read|write, expiresInDays?}"),
+    Endpoint("DELETE", "/api/admin/agents/{agentId}/keys/{keyId}", "エージェント専用アカウントの APIキーを取り消す（管理者・画面からのみ）"),
+    Endpoint("POST", "/api/admin/agents/{agentId}/channels", "エージェント専用アカウントをチャンネルに参加させる（管理者・画面からのみ） {channelIds}"),
+    Endpoint("DELETE", "/api/admin/agents/{agentId}/channels/{channelId}", "エージェント専用アカウントをチャンネルから外す（管理者・画面からのみ）")
   )
 
 /** MCP（Model Context Protocol）のサーバー。POST /mcp に JSON-RPC を送る（Streamable HTTP。応答は JSON、SSE は使わない）。

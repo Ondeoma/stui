@@ -25,6 +25,26 @@ final case class User(id: UUID, sub: String, name: String, email: Option[String]
     disabled: Boolean, timezone: String, isBot: Boolean = false)
 final case class Group(id: UUID, name: String)
 
+/**
+ * エージェント専用アカウント（skakapo などの外部の AI エージェントが API キーで使う。ログインはできない）。
+ * ボット（is_bot）の一種で、sub は bot:agent:<UUID>。メールは持たない（同じメールの IdP のユーザーに乗っ取られないため）。
+ */
+object AgentAccounts:
+  val SubPrefix = "bot:agent:"
+  /** SQL の like で使う形。 */
+  val SubLike = SubPrefix + "%"
+  def isAgent(sub: String): Boolean = sub.startsWith(SubPrefix)
+  def newSub(): String = SubPrefix + UUID.randomUUID()
+  /** ログインで使えない sub（ボット・エージェント）。 */
+  def reservedSub(sub: String): Boolean = sub.startsWith("bot:")
+  /** 名前の確認（前後の空白を除いて 1〜60 文字、制御文字なし）。正しければ整えた名前。 */
+  def validName(name: String): Either[String, String] =
+    val n = name.trim
+    if n.isEmpty then Left("名前を入力してください")
+    else if n.length > 60 then Left("名前は 60 文字以内にしてください")
+    else if n.exists(_.isControl) then Left("名前に制御文字は使えません")
+    else Right(n)
+
 /** 認証手段。 */
 enum AuthVia:
   case Session

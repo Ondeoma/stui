@@ -303,9 +303,12 @@ final class ChatService(channels: ChannelStore, messages: MessageStore, users: U
       case Right(ctx) if ctx.channel.archived => IO.pure(Left(Fail.Forbidden("アーカイブしたチャンネルです")))
       case Right(_) if !s.canWrite => IO.pure(Left(Fail.Forbidden("このAPIキーは参照専用です")))
       case Right(_) if userIds.size > 500 => IO.pure(Left(Fail.Invalid("一度に追加できるのは500人までです")))
-      case Right(ctx) =>
-        channels.addMembers(id, userIds).flatTap(added => memberJoined(ctx.channel, s.user, added)).map(Right(_))
+      case Right(ctx) => addMembersTo(ctx.channel, s.user, userIds).map(Right(_))
     }
+
+  /** 権限を確かめた後に、メンバーを追加して知らせる（管理画面からエージェント専用アカウントを参加させるときも使う）。 */
+  def addMembersTo(c: ChannelRow, actor: User, userIds: List[UUID]): IO[List[UUID]] =
+    channels.addMembers(c.id, userIds).flatTap(added => memberJoined(c, actor, added))
 
   private def memberJoined(c: ChannelRow, actor: User, added: List[UUID]): IO[Unit] =
     IO.whenA(added.nonEmpty)(
@@ -322,16 +325,19 @@ final class ChatService(channels: ChannelStore, messages: MessageStore, users: U
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) if ctx.channel.isDm => IO.pure(Left(Fail.Invalid("DM からは抜けられません（一覧から隠せます）")))
       case Right(ctx) if userId != s.user.id && !ctx.isChannelAdmin && !s.canAdmin => IO.pure(Left(Fail.Forbidden("チャンネルの管理者だけが外せます")))
-      case Right(ctx) =>
-        channels.removeMember(id, userId).flatMap {
-          case false => IO.pure(Left(Fail.NotFound("メンバーではありません")))
-          case true =>
-            users.find(userId).flatMap { u =>
-              val name = u.map(_.name).getOrElse("")
-              system(ctx.channel, s.user, if userId == s.user.id then s"${s.user.name} さんが退出しました" else s"${s.user.name} さんが $name さんを外しました") *>
-                messages.eventIO(id, EventKind.MemberLeft, actor = Some(s.user.id), user = Some(userId)) *>
-                webhook(ctx.channel, EventKind.MemberLeft, None, Some(s.user), None, Json.obj("user" -> userId.asJson)).as(Right(()))
-            }
+      case Right(ctx) => removeMemberFrom(ctx.channel, s.user, userId)
+    }
+
+  /** 権限を確かめた後に、メンバーを外して知らせる（管理画面からエージェント専用アカウントを外すときも使う）。 */
+  def removeMemberFrom(c: ChannelRow, actor: User, userId: UUID): Res[Unit] =
+    channels.removeMember(c.id, userId).flatMap {
+      case false => IO.pure(Left(Fail.NotFound("メンバーではありません")))
+      case true =>
+        users.find(userId).flatMap { u =>
+          val name = u.map(_.name).getOrElse("")
+          system(c, actor, if userId == actor.id then s"${actor.name} さんが退出しました" else s"${actor.name} さんが $name さんを外しました") *>
+            messages.eventIO(c.id, EventKind.MemberLeft, actor = Some(actor.id), user = Some(userId)) *>
+            webhook(c, EventKind.MemberLeft, None, Some(actor), None, Json.obj("user" -> userId.asJson)).as(Right(()))
         }
     }
 

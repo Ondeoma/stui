@@ -130,6 +130,21 @@ final case class CreateApiKeyReq(name: String, scopes: List[String], expiresInDa
 
 final case class CreatedApiKeyDto(key: String, info: ApiKeyDto) derives Encoder.AsObject, Decoder
 
+/** エージェント専用アカウントの API キー（管理画面。取り消したものも含む。ハッシュは返さない）. */
+final case class AgentKeyDto(id: UUID, name: String, prefix: String, scopes: List[String], createdAt: Timestamp, lastUsedAt: Option[Timestamp],
+    expiresAt: Option[Timestamp], revoked: Boolean) derives Encoder.AsObject, Decoder
+
+/** エージェント専用アカウント（管理画面）. channels は参加しているチャンネル. */
+final case class AgentDto(id: UUID, name: String, disabled: Boolean, createdAt: Timestamp, keys: List[AgentKeyDto], channels: List[ChannelBrief])
+    derives Encoder.AsObject, Decoder
+
+final case class CreateAgentReq(name: String) derives Encoder.AsObject, Decoder
+
+final case class UpdateAgentReq(name: Option[String], disabled: Option[Boolean]) derives Encoder.AsObject, Decoder
+
+/** エージェント専用アカウントをチャンネルに参加させる. */
+final case class AgentChannelsReq(channelIds: List[UUID]) derives Encoder.AsObject, Decoder
+
 /** まとめてメンションできる相手（id は g:<グループID>、r:channel・r:here）. */
 final case class MentionGroupDto(id: String, name: String, count: Int) derives Encoder.AsObject, Decoder
 

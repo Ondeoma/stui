@@ -163,6 +163,10 @@ trait RouteSupport extends Http4sDsl[IO]:
   protected def sessionOnly(req: Request[IO])(f: AuthSession => IO[Response[IO]]): IO[Response[IO]] =
     authed(req)(s => if s.isSession then f(s) else err(Status.Forbidden, "この操作は画面からのみ行えます"))
 
+  /** システム管理者の、Cookie のセッションのみ（エージェント専用アカウントの管理など。APIキーでは admin スコープがあっても不可）。 */
+  protected def adminSession(req: Request[IO])(f: AuthSession => IO[Response[IO]]): IO[Response[IO]] =
+    admin(req)(s => if s.isSession then f(s) else err(Status.Forbidden, "この操作は画面からのみ行えます"))
+
   protected def body[A: Decoder](req: Request[IO])(f: A => IO[Response[IO]]): IO[Response[IO]] =
     req.as[A].attempt.flatMap {
       case Left(e)  => err(Status.BadRequest, s"リクエストの内容が正しくありません: ${e.getMessage.take(200)}")
@@ -250,6 +254,22 @@ final class Access2(channels: ChannelStore, messages: MessageStore):
         case other                  => other.map(_ -> m)
       }
     }
+
+/**
+ * APIキーの発行（自分用のキーと、管理者が発行するエージェント専用アカウントのキーで共通）。
+ * adminScope は admin スコープを付けられないときの失敗（付けてよければ None）。平文のキーは応答で1回だけ返す。
+ */
+object ApiKeyIssue:
+  def apply(users: UserStore, userId: UUID, r: CreateApiKeyReq, adminScope: Option[Fail]): Res[CreatedApiKeyDto] =
+    val scopes = r.scopes.map(_.trim.toLowerCase).distinct
+    if r.name.trim.isEmpty then IO.pure(Left(Fail.Invalid("名前を入力してください")))
+    else if scopes.isEmpty || !scopes.forall(ApiScope.all.contains) then IO.pure(Left(Fail.Invalid("スコープは read / write / admin から選んでください")))
+    else adminScope.filter(_ => scopes.contains(ApiScope.Admin)) match
+      case Some(f) => IO.pure(Left(f))
+      case None =>
+        val (key, prefix) = ApiKeys.generate()
+        val exp = r.expiresInDays.filter(_ > 0).map(d => Instant.now().plusSeconds(d.toLong * 86400))
+        users.createKey(userId, r.name.trim, prefix, Crypto.sha256(key), scopes, exp).map(info => Right(CreatedApiKeyDto(key, info)))
 
 /** 日付の入力（yyyy-MM-dd）。 */
 object Dates:

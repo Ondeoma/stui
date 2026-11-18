@@ -179,6 +179,7 @@ object Main extends IOApp.Simple:
           healthRoutes(xa, cfg.nodeId) <+>
             new AuthRoutes(oidc, users, channels, activity, sess, access, cfg.api).routes <+>
             new UserRoutes(users, channels, activity, blobs, emojis, sess, access).routes <+>
+            new AgentRoutes(users, channels, chat, activity, sess, access).routes <+>
             new ChannelRoutes(channels, messages, users, activity, chat, sess, access).routes <+>
             new MessageRoutes(messages, channels, activity, chat, blobs, sess, access, cfg.api).routes <+>
             new SearchRoutes(search, channels, users, sess, access).routes <+>

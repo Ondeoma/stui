@@ -42,6 +42,30 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa):
           returning id, sub, name, email, avatar_url, is_admin, disabled, timezone, is_bot""".query[User].unique
   )
 
+  // ---------------------------------------------------------------- エージェント専用アカウント（管理画面で作る）
+
+  /** エージェント専用アカウントを作る（ボットの一種。メールなし。ログインはできない）。 */
+  def createAgent(name: String): IO[User] = bot(AgentAccounts.newSub(), name)
+
+  /** エージェント専用アカウント（ほかのユーザー・ボットは None）。 */
+  def findAgent(id: UUID): IO[Option[User]] = find(id).map(_.filter(u => AgentAccounts.isAgent(u.sub)))
+
+  /** エージェント専用アカウントの一覧（APIキー（取り消したものも）と参加しているチャンネルつき）。 */
+  def agents: IO[List[AgentDto]] = tx(
+    for
+      us <- sql"select id, name, disabled, created_at from app_user where sub like ${AgentAccounts.SubLike} order by lower(name), created_at"
+              .query[(UUID, String, Boolean, Instant)].to[List]
+      ids = us.map(_._1).toArray
+      ks <- sql"""select user_id, id, name, prefix, scopes, created_at, last_used_at, expires_at, revoked_at is not null from api_key
+                  where user_id = any($ids) order by created_at desc""".query[(UUID, AgentKeyDto)].to[List]
+      cs <- sql"""select cm.user_id, c.id, c.name, c.kind from channel_member cm join channel c on c.id = cm.channel_id
+                  where cm.user_id = any($ids) and c.kind in ('public', 'private') order by lower(c.name)""".query[(UUID, ChannelBrief)].to[List]
+    yield
+      val keysOf = ks.groupMap(_._1)(_._2)
+      val chsOf  = cs.groupMap(_._1)(_._2)
+      us.map((id, n, d, at) => AgentDto(id, n, d, at, keysOf.getOrElse(id, Nil), chsOf.getOrElse(id, Nil)))
+  )
+
   def find(id: UUID): IO[Option[User]] = tx(findC(id))
 
   def findC(id: UUID): ConnectionIO[Option[User]] =

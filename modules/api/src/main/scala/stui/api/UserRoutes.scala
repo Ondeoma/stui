@@ -6,7 +6,7 @@ import io.circe.syntax.*
 import org.http4s.*
 import org.http4s.circe.CirceEntityCodec.*
 import org.http4s.headers.Location
-import stui.auth.{ApiKeys, Crypto, OidcClient}
+import stui.auth.{Crypto, OidcClient}
 import stui.core.*
 import stui.db.*
 import stui.shared.*
@@ -62,6 +62,10 @@ final class AuthRoutes(oidc: Option[OidcClient], users: UserStore, channels: Cha
                 case Left(e) =>
                   activity.audit(None, "web", "auth.denied", None, Json.obj("error" -> e.getMessage.asJson)) *>
                     err(Status.Unauthorized, s"ログインできませんでした: ${e.getMessage}")
+                case Right(id) if AgentAccounts.reservedSub(id.sub) =>
+                  // ボット・エージェント専用アカウントの sub ではログインさせない
+                  activity.audit(None, "web", "auth.denied", None, Json.obj("error" -> "reserved sub".asJson)) *>
+                    err(Status.Forbidden, "このアカウントではログインできません")
                 case Right(id) =>
                   for
                     u <- users.upsert(id.sub, id.name, id.email, id.picture, cfg.timezone)
@@ -136,19 +140,11 @@ final class UserRoutes(users: UserStore, channels: ChannelStore, activity: Activ
     case req @ GET -> Root / "api" / "me" / "api-keys" => sessionOnly(req)(s => users.keys(s.user.id).flatMap(Ok(_)))
 
     case req @ POST -> Root / "api" / "me" / "api-keys" =>
-      sessionOnly(req)(s => body[CreateApiKeyReq](req) { r =>
-        val scopes = r.scopes.map(_.trim.toLowerCase).distinct
-        if r.name.trim.isEmpty then err(Status.BadRequest, "名前を入力してください")
-        else if scopes.isEmpty || !scopes.forall(ApiScope.all.contains) then err(Status.BadRequest, "スコープは read / write / admin から選んでください")
-        else if scopes.contains(ApiScope.Admin) && !s.isAdmin then err(Status.Forbidden, "admin スコープは管理者だけが使えます")
-        else
-          val (key, prefix) = ApiKeys.generate()
-          val exp = r.expiresInDays.filter(_ > 0).map(d => Instant.now().plusSeconds(d.toLong * 86400))
-          users.createKey(s.user.id, r.name.trim, prefix, Crypto.sha256(key), scopes, exp).flatMap { info =>
-            activity.audit(Some(s.user.id), "web", "api_key.create", Some(info.id.toString), Json.obj("name" -> info.name.asJson, "scopes" -> scopes.asJson)) *>
-              Created(CreatedApiKeyDto(key, info))
-          }
-      })
+      sessionOnly(req)(s => body[CreateApiKeyReq](req)(r =>
+        respond(ApiKeyIssue(users, s.user.id, r, Option.unless(s.isAdmin)(Fail.Forbidden("admin スコープは管理者だけが使えます")))) { c =>
+          activity.audit(Some(s.user.id), "web", "api_key.create", Some(c.info.id.toString), Json.obj("name" -> c.info.name.asJson, "scopes" -> c.info.scopes.asJson)) *>
+            Created(c)
+        }))
 
     case req @ DELETE -> Root / "api" / "me" / "api-keys" / UuidVar(id) =>
       sessionOnly(req)(s => users.revokeKey(s.user.id, id).flatMap {
