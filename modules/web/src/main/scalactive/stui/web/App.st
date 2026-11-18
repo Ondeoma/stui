@@ -68,7 +68,7 @@ def search(s: State): Unit = {
   if (q.nonEmpty) Router.go("/search?q=" + Api.enc(q))
 }
 
-def logout(): Unit = Api.logout().foreach(_ => dom.window.location.href = "/")
+def logout(): Unit = Api.logout().onComplete(r => dom.window.location.href = r.getOrElse("/"))
 
 def userName = Store.me.mapC(_.map(_.name).getOrElse(""))
 def meBrief = Store.me.mapC(_.map(m => UserBrief(m.id, m.name, m.avatarUrl, false)))

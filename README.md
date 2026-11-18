@@ -88,7 +88,7 @@ java -cp 'dist/lib/*' stui.app.Main
 |---|---|
 | `DATABASE_URL` / `DATABASE_USER` / `DATABASE_PASSWORD` | PostgreSQL（PGroonga が必要）。冗長構成では3台を並べて `targetServerType=primary` |
 | `PUBLIC_URL` | 公開 URL（`https://` なら Cookie に Secure が付く） |
-| `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | OIDC。Redirect URI は `${PUBLIC_URL}/auth/callback` |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | OIDC。Redirect URI は `${PUBLIC_URL}/auth/callback`。ログアウトでは IdP からもログアウトし、`${PUBLIC_URL}/` に戻る（sruru 以外の IdP では、この戻り先も登録する） |
 | `OIDC_GROUPS_CLAIM` | 所属グループのクレーム名（既定 `groups`） |
 | `ADMIN_GROUPS` | システム管理者にするグループ（カンマ区切り）。画面からも管理者を付けられる |
 | `APP_SECRET` | 秘密の値の暗号化（兄弟のサービスの OAuth トークン）に使う16文字以上の値 |

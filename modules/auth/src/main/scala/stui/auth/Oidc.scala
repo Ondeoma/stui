@@ -21,9 +21,9 @@ final case class OidcConfig(
     scopes: List[String] = List("openid", "profile", "email")
 )
 
-final case class Identity(sub: String, email: Option[String], name: String, groups: List[String], picture: Option[String] = None)
+final case class Identity(sub: String, email: Option[String], name: String, groups: List[String], picture: Option[String] = None, idToken: Option[String] = None)
 
-final case class ProviderMetadata(issuer: String, authorizationEndpoint: Uri, tokenEndpoint: Uri)
+final case class ProviderMetadata(issuer: String, authorizationEndpoint: Uri, tokenEndpoint: Uri, endSessionEndpoint: Option[Uri] = None)
 
 object IdToken:
 
@@ -85,7 +85,8 @@ final class OidcClient private (cfg: OidcConfig, http: Client[IO], meta: Ref[IO,
           tok  <- c.get[String]("token_endpoint")
           a    <- Uri.fromString(auth).leftMap(e => io.circe.DecodingFailure(e.message, Nil))
           t    <- Uri.fromString(tok).leftMap(e => io.circe.DecodingFailure(e.message, Nil))
-        yield ProviderMetadata(iss, a, t)
+        yield ProviderMetadata(iss, a, t,
+          c.get[String]("end_session_endpoint").toOption.flatMap(Uri.fromString(_).toOption))
         IO.fromEither(res).flatTap(m => meta.set(Some(m)))
       }
   }
@@ -124,7 +125,13 @@ final class OidcClient private (cfg: OidcConfig, http: Client[IO], meta: Ref[IO,
       idToken <- IO.fromEither(resp.hcursor.get[String]("id_token").leftMap(e => new RuntimeException(s"no id_token: $e")))
       claims  <- IO.fromEither(IdToken.decodeClaims(idToken).leftMap(new RuntimeException(_)))
       id      <- IO.fromEither(IdToken.validate(claims, m.issuer, cfg, nonce, now).leftMap(new RuntimeException(_)))
-    yield id
+    yield id.copy(idToken = Some(idToken))
+
+  /** IdP からもログアウトする URL（end_session_endpoint がなければ None）. */
+  def logoutUri(idToken: Option[String], postLogout: String): IO[Option[Uri]] =
+    discover.attempt.map(_.toOption.flatMap(_.endSessionEndpoint).map { e =>
+      e.withQueryParams(Map("post_logout_redirect_uri" -> postLogout, "client_id" -> cfg.clientId) ++ idToken.map("id_token_hint" -> _))
+    })
 
 object OidcClient:
   def create(cfg: OidcConfig, http: Client[IO]): IO[OidcClient] =

@@ -147,8 +147,8 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa):
 
   // ---------------------------------------------------------------- セッション
 
-  def createSession(hash: Array[Byte], userId: UUID, expires: Instant): IO[Unit] = tx(
-    sql"insert into session (token_hash, user_id, expires_at) values ($hash, $userId, $expires)".update.run.void
+  def createSession(hash: Array[Byte], userId: UUID, expires: Instant, idToken: Option[String] = None): IO[Unit] = tx(
+    sql"insert into session (token_hash, user_id, expires_at, id_token) values ($hash, $userId, $expires, $idToken)".update.run.void
   )
 
   def findSession(hash: Array[Byte], now: Instant): IO[Option[(User, List[Group])]] = tx(
@@ -158,7 +158,9 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa):
     }
   )
 
-  def deleteSession(hash: Array[Byte]): IO[Unit] = tx(sql"delete from session where token_hash = $hash".update.run.void)
+  /** セッションを消し、IdP からログアウトするための id_token を返す. */
+  def deleteSession(hash: Array[Byte]): IO[Option[String]] =
+    tx(sql"delete from session where token_hash = $hash returning id_token".query[Option[String]].option.map(_.flatten))
 
   def purgeExpired(now: Instant): IO[Unit] = tx(
     sql"delete from session where expires_at < $now".update.run *>

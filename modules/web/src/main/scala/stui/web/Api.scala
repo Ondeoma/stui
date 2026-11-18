@@ -70,7 +70,8 @@ object Api {
   def me(): Future[MeDto] = get[MeDto]("/api/me")
   def devLogin(name: String, email: String, admin: Boolean, returnTo: String): Future[Json] =
     post[Json]("/auth/dev-login", Json.obj("name" -> name.asJson, "email" -> email.asJson, "admin" -> admin.asJson, "returnTo" -> returnTo.asJson))
-  def logout(): Future[Unit] = postUnit("/auth/logout")
+  /** ログアウトして、次に開く URL（IdP のログアウト画面か「/」）を返す. */
+  def logout(): Future[String] = post[Json]("/auth/logout").map(_.hcursor.get[String]("redirect").getOrElse("/"))
   def users(q: String, limit: Int = 20): Future[List[UserBrief]] = get[List[UserBrief]]("/api/users" + query("q" -> Some(q), "limit" -> Some(limit.toString)))
 
   // ---------------------------------------------------------------- チャンネル
