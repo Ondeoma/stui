@@ -1,9 +1,10 @@
 <script lang="scala">
 import org.scalajs.dom
+import stui.web.Backdrop
 
 import scala.scalajs.js
 
-// モーダルの枠（body の直下に描く。背景のクリックか Esc キーで onClose を呼ぶ）
+// モーダルの枠（body の直下に描く。背景のクリック（押し始めも背景のとき）か Esc キーで onClose を呼ぶ）
 case class Props(onClose: Unit => Unit, wide: Boolean = false, xwide: Boolean = false, slot: Slot = Slot.empty)
 
 case class State(esc: RV[Option[js.Function1[dom.KeyboardEvent, Unit]]] = RV(None))
@@ -28,7 +29,7 @@ def cls(props: Props): String = if (props.xwide) "modal xwide" else if (props.wi
 
 <template>
   <Teleport to="body">
-    <div class="modal-bg" @click.self="props.onClose(())">
+    <div class="modal-bg" @mousedown="Backdrop.down(event)" @mouseup="Backdrop.up(event)" @click="Backdrop.click(event)(props.onClose(()))">
       <div :class="cls(props)"><slot></slot></div>
     </div>
   </Teleport>
