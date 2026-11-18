@@ -2,7 +2,6 @@ package stui.api
 
 import cats.effect.*
 import cats.syntax.all.*
-import fs2.io.file.Path as FPath
 import io.circe.Json
 import io.circe.syntax.*
 import org.http4s.*
@@ -14,7 +13,6 @@ import stui.db.*
 import stui.shared.*
 import stui.storage.BlobStore
 
-import java.security.MessageDigest
 import java.util.UUID
 
 /** チャンネル・DM・メンバー・ブックマーク。 */
@@ -154,17 +152,6 @@ final class MessageRoutes(messages: MessageStore, channels: ChannelStore, activi
   private val inlineTypes = Set("image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain", "video/mp4",
     "video/webm", "audio/mpeg", "audio/ogg", "audio/wav")
 
-  private def sha256Hex(p: FPath): IO[String] = IO.blocking {
-    val md = MessageDigest.getInstance("SHA-256")
-    val in = java.nio.file.Files.newInputStream(p.toNioPath)
-    try
-      val buf = new Array[Byte](64 * 1024)
-      var n   = in.read(buf)
-      while n > 0 do { md.update(buf, 0, n); n = in.read(buf) }
-      md.digest().map(b => f"${b & 0xff}%02x").mkString
-    finally in.close()
-  }
-
   private def rootParam(req: Request[IO]): Option[UUID] = param(req, "rootId").flatMap(uuidOpt)
 
   /** 見られるメッセージだけに絞る。 */
@@ -207,7 +194,7 @@ final class MessageRoutes(messages: MessageStore, channels: ChannelStore, activi
           withUpload(req, cfg.maxUploadBytes) { up =>
             val key = s"channels/$id/${UUID.randomUUID()}"
             for
-              sha <- sha256Hex(up.path)
+              sha <- BlobStore.sha256Hex(up.path)
               _   <- store.put(key, up.path, up.contentType)
               a   <- messages.addAttachment(id, key, up.name, up.size, up.contentType, sha, s.user.id)
               r   <- Created(AttachmentDto(a.id, a.fileName, a.size, a.contentType, Files.url(a.id, a.fileName)))

@@ -18,8 +18,15 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa):
 
   // ---------------------------------------------------------------- ユーザー
 
-  /** ログイン時に作成・更新する。timezone は新しく作るときだけ使う（既定のタイムゾーン。あとは本人が個人設定で変える）。 */
+  /** ログイン時に作成・更新する。timezone は新しく作るときだけ使う（既定のタイムゾーン。あとは本人が個人設定で変える）。
+    * Mattermost から取り込んだユーザー（まだ誰もログインしていない）に同じメールアドレスの人がいれば、その人のアカウントとして引き継ぐ。 */
   def upsert(sub: String, name: String, email: Option[String], avatar: Option[String], timezone: String = "Asia/Tokyo"): IO[User] = tx(
+    email.filter(_ => !sub.startsWith(Mattermost.SubPrefix)).traverse_ { e =>
+      sql"""update app_user set sub = $sub where id = (
+              select id from app_user where sub like ${Mattermost.SubPrefix + "%"} and lower(email) = lower($e) and not is_bot
+              order by created_at limit 1)
+            and not exists(select 1 from app_user where sub = $sub)""".update.run
+    } *>
     sql"""insert into app_user (id, sub, name, email, avatar_url, timezone, last_login_at)
           values (${UUID.randomUUID()}, $sub, $name, $email, $avatar, $timezone, now())
           on conflict (sub) do update set name = excluded.name, email = excluded.email,

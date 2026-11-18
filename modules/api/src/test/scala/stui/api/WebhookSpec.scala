@@ -28,5 +28,5 @@ class WebhookSpec extends CatsEffectSuite:
 
   test("受信の JSON を Markdown にする（attachments も）") {
     val j = io.circe.parser.parse("""{"text":"本文","attachments":[{"title":"題","title_link":"https://x.example","fields":[{"title":"時間","value":"3分"}]}]}""").toOption.get
-    assertEquals(svc(false).toMarkdown(j), "本文\n\n**[題](https://x.example)**\n\n- **時間**: 3分")
+    assertEquals(stui.core.SlackPayload.toMarkdown(j), "本文\n\n**[題](https://x.example)**\n\n- **時間**: 3分")
   }

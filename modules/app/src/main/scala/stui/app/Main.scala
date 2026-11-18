@@ -55,11 +55,19 @@ object Config:
       })
     }
 
+  /** DB（DATABASE_URL・DATABASE_USER・DATABASE_PASSWORD）。取り込みのコマンドでも使う。 */
+  def db: Either[String, DbConfig] =
+    (required("DATABASE_URL"), required("DATABASE_USER"), required("DATABASE_PASSWORD"))
+      .mapN((u, n, p) => DbConfig(u, n, p, int("DATABASE_POOL_SIZE").getOrElse(10)))
+
+  /** 添付ファイルの置き場所（S3_*. 未設定なら None）。 */
+  def s3: Option[S3Config] =
+    opt("S3_ENDPOINT").map(ep => S3Config(ep, opt("S3_REGION").getOrElse("us-east-1"), opt("S3_BUCKET").getOrElse("stui"),
+      opt("S3_ACCESS_KEY").getOrElse(""), opt("S3_SECRET_KEY").getOrElse(""), !opt("S3_PATH_STYLE").contains("false")))
+
   def load: IO[AppConfig] = IO.fromEither(
     (for
-      dbUrl  <- required("DATABASE_URL")
-      dbUser <- required("DATABASE_USER")
-      dbPass <- required("DATABASE_PASSWORD")
+      dbCfg  <- db
       pub    <- required("PUBLIC_URL")
       devLogin = enabled("DEV_LOGIN")
       _ <- Either.cond(!(devLogin && pub.startsWith("https://")), (), "DEV_LOGIN（開発用のログイン）は https の PUBLIC_URL では使えません")
@@ -82,7 +90,7 @@ object Config:
       val base = pub.stripSuffix("/")
       AppConfig(
         port = int("HTTP_PORT").getOrElse(8080),
-        db = DbConfig(dbUrl, dbUser, dbPass, int("DATABASE_POOL_SIZE").getOrElse(10)),
+        db = dbCfg,
         oidc = oidc,
         api = ApiConfig(
           adminGroups = opt("ADMIN_GROUPS").map(_.split(',').map(_.trim).filter(_.nonEmpty).toSet).getOrElse(Set.empty),
@@ -102,8 +110,7 @@ object Config:
           }
         ),
         staticDir = opt("STATIC_DIR"),
-        s3 = opt("S3_ENDPOINT").map(ep => S3Config(ep, opt("S3_REGION").getOrElse("us-east-1"), opt("S3_BUCKET").getOrElse("stui"),
-          opt("S3_ACCESS_KEY").getOrElse(""), opt("S3_SECRET_KEY").getOrElse(""), !opt("S3_PATH_STYLE").contains("false"))),
+        s3 = s3,
         smtp = opt("SMTP_HOST").map { h =>
           val tls = opt("SMTP_TLS").getOrElse("starttls").toLowerCase
           SmtpConfig(h, int("SMTP_PORT").getOrElse(if tls == "ssl" then 465 else if tls == "none" then 25 else 587), opt("SMTP_USER"),

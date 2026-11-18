@@ -109,6 +109,39 @@ java -cp 'dist/lib/*' stui.app.Main
 | `VAPID_SUBJECT` | プッシュ通知（PWA）の連絡先（`mailto:…` か `https://…`。省略すると `PUBLIC_URL`）。VAPID の鍵は初回の起動で作って DB に保存する |
 | `DEV_LOGIN` | 開発用のログインを有効にする（開発専用。OIDC と同時には指定できず、https の `PUBLIC_URL` では起動しない） |
 
+## Mattermost からの取り込み
+
+Mattermost の DB のダンプ（PostgreSQL）から、ユーザー・チャンネル・投稿などを取り込めます。サーバーとは別のコマンドで動かします。
+
+```bash
+# 1. Mattermost の DB をダンプする（Mattermost 側で）
+pg_dump -Fc -U mmuser mattermost > mattermost.dump
+
+# 2. 一時的な PostgreSQL に戻す（取り込みはこの DB を読むだけ）
+docker run -d --name mm-import -e POSTGRES_USER=mmuser -e POSTGRES_PASSWORD=… -e POSTGRES_DB=mattermost -p 127.0.0.1:55432:5432 postgres:16
+docker exec -i mm-import pg_restore -U mmuser -d mattermost --no-owner < mattermost.dump
+
+# 3. 取り込む（取り込み先は stui と同じ DATABASE_*・S3_*。先に --dry-run で数を確かめられる）
+export MATTERMOST_DATABASE_URL=jdbc:postgresql://localhost:55432/mattermost MATTERMOST_DATABASE_USER=mmuser MATTERMOST_DATABASE_PASSWORD=…
+java -cp 'dist/lib/*' stui.app.ImportMattermost --dry-run
+java -cp 'dist/lib/*' stui.app.ImportMattermost --files /opt/mattermost/data
+```
+
+| 引数 | 内容 |
+|---|---|
+| `--team <名前>` | 取り込むチーム（Mattermost の URL に出るチームの名前）。複数指定できる。省くとすべてのチーム |
+| `--files <ディレクトリ>` | Mattermost のファイルの置き場所（`config.json` の `FileSettings.Directory`。サーバーから写したものでよい）。添付ファイルとカスタム絵文字を取り込む（S3 の設定が必要） |
+| `--dry-run` | 書き込まずに、取り込む数だけを表示する |
+
+- **取り込むもの**: ユーザー、チャンネル（公開・非公開・DM・グループ DM。アーカイブも）とメンバー、投稿（スレッド・ピン留め・編集済み・Webhook の投稿と attachments）、
+  `@ユーザー名`・`@channel`・`@here` のメンション、リアクション、添付ファイル、カスタム絵文字。投稿の時刻・投稿者は Mattermost のまま。各メンバーの既読の位置も、Mattermost で最後に見た時刻に合わせる。
+- **取り込まないもの**: 消した投稿・編集前の版、システムの投稿（参加・退出・ヘッダーの変更など）、通知の設定、お気に入り、Mattermost のプラグインのデータ。
+- **ユーザー**: 同じメールアドレスの人が stui にいればその人に結び付け、いなければ作る（sub は `mattermost:<ID>`）。作ったユーザーは、**同じメールアドレスで最初に OIDC でログインしたとき**に、その人のアカウントとして引き継がれる。Mattermost で無効にした人は無効のまま。
+- **チャンネル**: stui にはチームがないので、すべてのチームのチャンネルを同じ一覧に並べる。名前がぶつかったら「名前 (チーム名)」にする。同じ顔ぶれの DM がすでにあれば、そこに足す。
+- **やり直し**: 取り込んだものは `import_map` 表に記録するので、もう一度実行しても二重に作らない（Mattermost を使い続けている間に何度か流し、最後に差分だけを足す、という移行もできる）。
+- **リアクション**: Mattermost の絵文字の名前（`thumbsup` など）は stui の絵文字にする。stui の一覧にないものは `:名前:`（カスタム絵文字）として残す。
+- **注意**: 並び順の通し番号は取り込んだ順に振るので、使い始めた stui に取り込むと、既存の DM に足した古い投稿が新しい投稿のあとに並ぶ。できるだけ使い始める前に取り込む。取り込み元は PostgreSQL の Mattermost だけ（MySQL のものは、Mattermost の手順で PostgreSQL に移してから）。
+
 ## API・MCP・Webhook
 
 - 画面の「個人設定」で APIキー（`stui_` で始まる）を発行し、`Authorization: Bearer <キー>` で送ります。
