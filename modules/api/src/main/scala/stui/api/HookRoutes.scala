@@ -102,13 +102,20 @@ final class WebhookService(hooks: HookStore, users: UserStore, channels: Channel
       stui.observe.Metrics.count("stui.webhook.deliveries", "result" -> result)
     }
 
-  private def deliver(d: DeliveryRow): IO[(OutboxResult, Option[Int])] =
+  /**
+   * 送る要求。本文は payload.noSpaces そのもので、署名もこの本文で計算する。
+   * CirceEntityCodec を import しているので、文字のエンコーダーを明示しないと本文が JSON の文字列（"{\"event\":...}"）になる。
+   */
+  def request(d: DeliveryRow): Request[IO] =
     val body = d.payload.noSpaces
     val sig  = "sha256=" + Crypto.hmacHex(d.secret, body.getBytes(StandardCharsets.UTF_8))
-    val req = Request[IO](Method.POST, Uri.unsafeFromString(d.url))
-      .withEntity(body)
+    Request[IO](Method.POST, Uri.unsafeFromString(d.url))
+      .withEntity(body)(using EntityEncoder.stringEncoder)
       .withContentType(`Content-Type`(MediaType.application.json))
       .putHeaders("X-Stui-Event" -> d.event, "X-Stui-Delivery" -> d.id.toString, "X-Stui-Signature" -> sig, "User-Agent" -> "stui-webhook")
+
+  private def deliver(d: DeliveryRow): IO[(OutboxResult, Option[Int])] =
+    val req = request(d)
     http.run(req).use(r => r.body.take(65536).through(fs2.text.utf8.decode).compile.string.map(r.status.code -> _)).timeout(15.seconds).attempt.flatMap {
       case Right((c, text)) if c >= 200 && c < 300 => reply(d, text).as((OutboxResult.Sent, Some(c)))
       case Right((c, _)) if c == 410               => IO.pure((OutboxResult.Skip(s"HTTP $c"), Some(c)))
