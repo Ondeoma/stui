@@ -9,7 +9,10 @@ import scala.scalajs.js
 object Images {
 
   /** 画像を中央で正方形に切り取り、size px に縮める（アイコンの登録用）. GIF などで読めないときは元のファイルを返す. */
-  def squareThumb(file: dom.File, size: Int = 256): Future[dom.File] = {
+  def squareThumb(
+    file: dom.File,
+    size: Int = 256
+  ): Future[dom.File] = {
     val p = Promise[dom.File]()
     val url = dom.URL.createObjectURL(file)
     val img = dom.document.createElement("img").asInstanceOf[dom.HTMLImageElement]
@@ -23,7 +26,8 @@ object Images {
         .drawImage(img, (w - s) / 2.0, (h - s) / 2.0, s, s, 0, 0, canvas.width, canvas.height)
       dom.URL.revokeObjectURL(url)
       val done: js.Function1[dom.Blob, Unit] = b =>
-        p.success(if (b == null) file else new dom.File(js.Array(b), "avatar.png", new dom.FilePropertyBag { `type` = "image/png" }))
+        p.success(if (b == null) file
+        else new dom.File(js.Array(b), "avatar.png", new dom.FilePropertyBag { `type` = "image/png" }))
       canvas.asInstanceOf[js.Dynamic].toBlob(done, "image/png")
     }
     img.addEventListener("error", (_: dom.Event) => { dom.URL.revokeObjectURL(url); p.success(file) })

@@ -42,6 +42,7 @@ def mounted(s: State): Unit = {
   if (dom.window.location.pathname.startsWith("/login")) s.ready := true
   else Store.report(Api.me()) { me =>
     Store.me := Some(me)
+    AppNames.set(me.appNames)
     Observe.setUser(me.id.toString)
     // 自分へのメンションを目立たせる
     val st = dom.document.createElement("style")

@@ -10,7 +10,11 @@ import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 import scala.scalajs.js
 import scala.util.{Failure, Success}
 
-final case class Toast(id: Int, text: String, link: Option[String], error: Boolean)
+final case class Toast(
+  id: Int,
+  text: String,
+  link: Option[String],
+  error: Boolean)
 
 /**
  * 画面全体で共有する状態と、変更の自動同期.
@@ -26,6 +30,7 @@ object Store {
   val threadsUnread: RV[Int] = RV(0)
   val savedCount: RV[Int] = RV(0)
   val toasts: RV[List[Toast]] = RV(Nil)
+
   /** サイドバーを開いているか（スマホの幅）. */
   val sideOpen: RV[Boolean] = RV(false)
 
@@ -38,6 +43,7 @@ object Store {
   private var since: Long = 0L
   private var toastSeq = 0
   private var eventSeq = 0
+
   /** 表示中のチャンネル（参加していない公開チャンネルの変更も受け取るため）. */
   private var viewing: Option[UUID] = None
   private var memberCache: Map[UUID, List[UserBrief]] = Map.empty
@@ -48,38 +54,58 @@ object Store {
   /** システム管理者か. */
   def isAdmin = me.mapC(_.exists(_.isAdmin))
 
-  def channel(id: UUID): Option[ChannelDto] = channels.v.find(_.id == id)
+  def channel(
+    id: UUID
+  ): Option[ChannelDto] = channels.v.find(_.id == id)
 
   /** チャンネルの表示名（DM は相手の名前）. */
-  def title(c: ChannelDto): String =
+  def title(
+    c: ChannelDto
+  ): String =
     if (ChannelKind.isDm(c.kind)) {
       val names = c.dmUsers.map(_.name)
       if (c.dmUsers.map(_.id) == myId.toList) s"${names.mkString}（自分）" else names.mkString("、")
     } else c.name
 
-  def titleOf(b: ChannelBrief): String =
+  def titleOf(
+    b: ChannelBrief
+  ): String =
     channel(b.id).map(title).getOrElse(if (ChannelKind.isDm(b.kind)) "DM" else b.name)
 
-  def prefix(kind: String): String = if (ChannelKind.isDm(kind)) "" else if (kind == ChannelKind.Private) "🔒 " else "# "
+  def prefix(
+    kind: String
+  ): String = if (ChannelKind.isDm(kind)) "" else if (kind == ChannelKind.Private) "🔒 " else "# "
 
   // ---------------------------------------------------------------- トースト
 
-  def toast(text: String, link: Option[String] = None, error: Boolean = false): Unit = {
+  def toast(
+    text: String,
+    link: Option[String] = None,
+    error: Boolean = false
+  ): Unit = {
     toastSeq += 1
     val t = Toast(toastSeq, text, link, error)
     toasts := (toasts.v :+ t).takeRight(5)
     dom.window.setTimeout(() => dismiss(t.id), if (error) 9000 else 6000)
   }
 
-  def dismiss(id: Int): Unit = toasts := toasts.v.filterNot(_.id == id)
+  def dismiss(
+    id: Int
+  ): Unit = toasts := toasts.v.filterNot(_.id == id)
 
-  def error(e: Throwable): Unit = e match {
+  def error(
+    e: Throwable
+  ): Unit = e match {
     case ApiError(401, _) => ()
-    case other            => toast(other.getMessage, error = true)
+    case other => toast(other.getMessage, error = true)
   }
 
   /** Future の失敗をトーストで知らせる. */
-  def report[A](f: Future[A])(ok: A => Unit): Unit = f.onComplete {
+  def report[A](
+    f: Future[A]
+  )(
+    ok: A => Unit
+  ): Unit = f.onComplete {
     case Success(a) => ok(a)
     case Failure(e) => error(e)
   }
@@ -90,25 +116,39 @@ object Store {
 
   /** チャンネルの一覧を読み直す（続けて呼ばれてもまとめて1回）. */
   def reloadChannels(): Unit = if (reloadTimer.isEmpty)
-    reloadTimer = Some(dom.window.setTimeout(() => {
-      reloadTimer = None
-      Api.channels().foreach { cs => channels := cs; updateTitle() }
-      Api.unreadThreads().foreach(n => if (n != threadsUnread.v) threadsUnread := n)
-      refreshSaved()
-    }, 200))
+    reloadTimer = Some(dom.window.setTimeout(
+      () => {
+        reloadTimer = None
+        Api.channels().foreach { cs => channels := cs; updateTitle() }
+        Api.unreadThreads().foreach(n => if (n != threadsUnread.v) threadsUnread := n)
+        refreshSaved()
+      },
+      200
+    ))
 
   /** 保存済みの件数を読み直す（サイドバーに出す）. */
   def refreshSaved(): Unit = Api.savedCount().foreach(n => if (n != savedCount.v) savedCount := n)
 
-  def loadChannels(): Future[List[ChannelDto]] = { refreshSaved(); Api.channels().map { cs => channels := cs; updateTitle(); cs } }
+  def loadChannels(): Future[List[ChannelDto]] = {
+    refreshSaved(); Api.channels().map { cs => channels := cs; updateTitle(); cs }
+  }
 
   /** 一覧の中のチャンネルを差し替える（設定を変えたとき）. */
-  def replace(c: ChannelDto): Unit =
-    channels := (if (channels.v.exists(_.id == c.id)) channels.v.map(x => if (x.id == c.id) c else x) else if (c.member) channels.v :+ c else channels.v)
+  def replace(
+    c: ChannelDto
+  ): Unit =
+    channels :=
+      (if (channels.v.exists(_.id == c.id)) channels.v.map(x => if (x.id == c.id) c else x)
+       else if (c.member) channels.v :+ c else channels.v)
 
   /** 既読にした（一覧の未読の数を消す）. */
-  def markedRead(id: UUID, seq: Long): Unit = {
-    channels := channels.v.map(c => if (c.id == id) c.copy(unread = 0, mentions = 0, lastReadSeq = math.max(c.lastReadSeq, seq)) else c)
+  def markedRead(
+    id: UUID,
+    seq: Long
+  ): Unit = {
+    channels := channels.v.map(c =>
+      if (c.id == id) c.copy(unread = 0, mentions = 0, lastReadSeq = math.max(c.lastReadSeq, seq)) else c
+    )
     updateTitle()
     dom.window.setTimeout(() => Api.unread().foreach(u => if (u != unread.v) unread := u), 300)
   }
@@ -126,29 +166,43 @@ object Store {
   }
 
   /** メンションの候補（チャンネルのメンバー）. */
-  def members(channelId: UUID): Future[List[UserBrief]] =
+  def members(
+    channelId: UUID
+  ): Future[List[UserBrief]] =
     memberCache.get(channelId) match {
       case Some(a) => Future.successful(a)
-      case None    => Api.members(channelId).map(_.map(_.user).filterNot(_.bot)).map { a => memberCache = memberCache.updated(channelId, a); a }
+      case None => Api.members(channelId).map(_.map(_.user).filterNot(_.bot)).map { a =>
+          memberCache = memberCache.updated(channelId, a); a
+        }
     }
 
-  def mentionGroups(channelId: UUID): Future[List[MentionGroupDto]] =
+  def mentionGroups(
+    channelId: UUID
+  ): Future[List[MentionGroupDto]] =
     groupCache.get(channelId) match {
       case Some(a) => Future.successful(a)
-      case None    => Api.mentionGroups(channelId).map { a => groupCache = groupCache.updated(channelId, a); a }
+      case None => Api.mentionGroups(channelId).map { a => groupCache = groupCache.updated(channelId, a); a }
     }
 
-  def forgetMembers(channelId: UUID): Unit = memberCache -= channelId
+  def forgetMembers(
+    channelId: UUID
+  ): Unit = memberCache -= channelId
 
   // ---------------------------------------------------------------- 画面の移動
 
-  def openChannel(id: UUID): Unit = { sideOpen := false; Router.go(s"/c/$id") }
+  def openChannel(
+    id: UUID
+  ): Unit = { sideOpen := false; Router.go(s"/c/$id") }
 
   /** DM を開く（相手. 空なら自分だけ）. */
-  def openDm(users: List[UUID]): Unit = report(Api.openDm(users)) { c => replace(c); openChannel(c.id) }
+  def openDm(
+    users: List[UUID]
+  ): Unit = report(Api.openDm(users)) { c => replace(c); openChannel(c.id) }
 
   /** 表示中のチャンネルを知らせる（参加していない公開チャンネルの変更も受け取る）. */
-  def view(id: Option[UUID]): Unit = if (viewing != id) {
+  def view(
+    id: Option[UUID]
+  ): Unit = if (viewing != id) {
     viewing = id
     val watch = id.filterNot(i => channel(i).exists(_.member))
     if (watch != streamWatch) { stream.foreach(_.close()); stream = None; connect() }
@@ -171,7 +225,8 @@ object Store {
           eventSeq += 1
           events := ((eventSeq, c.events))
           if (c.events.exists(e => e.kind != EventKind.ReactionChanged)) reloadChannels()
-          if (c.events.exists(e => (e.kind == EventKind.MemberJoined || e.kind == EventKind.MemberLeft))) memberCache = Map.empty
+          if (c.events.exists(e => (e.kind == EventKind.MemberJoined || e.kind == EventKind.MemberLeft)))
+            memberCache = Map.empty
         } else since = c.latest
       }
     }
@@ -186,19 +241,33 @@ object Store {
 
   /** 画面が隠れているときに、新しい通知をデスクトップに出す（許可されていれば）. */
   private def desktopNotify(): Unit =
-    if (dom.document.visibilityState.toString != "visible" && Prefs.get("desktop", "on") == "on" &&
-        !js.isUndefined(js.Dynamic.global.Notification) && js.Dynamic.global.Notification.permission.asInstanceOf[String] == "granted")
+    if (
+      dom.document.visibilityState.toString != "visible" && Prefs.get("desktop", "on") == "on" &&
+      !js.isUndefined(js.Dynamic.global.Notification) &&
+      js.Dynamic.global.Notification.permission.asInstanceOf[String] == "granted"
+    )
       Api.notifications(Nil, unread = true).foreach(_.items.headOption.foreach { n =>
-        val no = js.Dynamic.newInstance(js.Dynamic.global.Notification)(n.title, js.Dynamic.literal(body = n.body.take(200), tag = n.id.toString,
-          icon = "/favicon.svg"))
-        no.onclick = (() => {
-          dom.window.focus()
-          n.channel.foreach(c => Router.go(Paths.message(c.id, n.messageId, n.rootId)))
-        }): js.Function0[Unit]
+        val no = js.Dynamic.newInstance(js.Dynamic.global.Notification)(
+          n.title,
+          js.Dynamic.literal(
+            body = n.body.take(200),
+            tag = n.id.toString,
+            icon = "/favicon.svg"
+          )
+        )
+        no.onclick = (
+          () => {
+            dom.window.focus()
+            n.channel.foreach(c => Router.go(Paths.message(c.id, n.messageId, n.rootId)))
+          }
+        ): js.Function0[Unit]
       })
 
   def askDesktopPermission(): Unit =
-    if (!js.isUndefined(js.Dynamic.global.Notification) && js.Dynamic.global.Notification.permission.asInstanceOf[String] == "default")
+    if (
+      !js.isUndefined(js.Dynamic.global.Notification) &&
+      js.Dynamic.global.Notification.permission.asInstanceOf[String] == "default"
+    )
       js.Dynamic.global.Notification.requestPermission()
 
   // ---------------------------------------------------------------- 即時の反映（SSE）
@@ -209,7 +278,8 @@ object Store {
   private var lastPoll = 0.0
 
   /** 知らせが続けて届いてもまとめて1回だけ取りに行く. */
-  private def soon(): Unit = if (pending.isEmpty) pending = Some(dom.window.setTimeout(() => { pending = None; poll() }, 120))
+  private def soon(): Unit =
+    if (pending.isEmpty) pending = Some(dom.window.setTimeout(() => { pending = None; poll() }, 120))
 
   private def live: Boolean = stream.exists(_.readyState == dom.EventSource.OPEN)
 
@@ -226,162 +296,43 @@ object Store {
 
   def startSync(): Unit = {
     // SSE でつながっている間は、念のため60秒ごとにだけ確認する
-    dom.window.setInterval(() => if (dom.document.visibilityState.toString == "visible" && (!live || js.Date.now() - lastPoll > 60000)) poll(), 10000)
-    dom.document.addEventListener("visibilitychange", (_: dom.Event) => if (dom.document.visibilityState.toString == "visible") poll())
-  }
-
-}
-
-/** DOM のイベント・クリップボードの補助. */
-object Dom {
-
-  /** 入力欄（input・select・textarea）の値. */
-  def value(e: dom.Event): String = e.target.asInstanceOf[js.Dynamic].value.asInstanceOf[String]
-
-  def checked(e: dom.Event): Boolean = e.target.asInstanceOf[dom.HTMLInputElement].checked
-
-  /** 押した要素の下に、スクロールする枠（なければ画面）の端までどれだけ余白があるか（px）. メニューを上下どちらに開くかに使う. */
-  def spaceBelow(e: dom.Event): Double = {
-    val el = e.currentTarget.asInstanceOf[dom.HTMLElement]
-    val bottom = el.getBoundingClientRect().bottom
-    def scroller(n: dom.HTMLElement): Option[dom.HTMLElement] =
-      if (n == null) None
-      else {
-        val oy = dom.window.getComputedStyle(n).overflowY
-        if (oy == "auto" || oy == "scroll") Some(n) else scroller(n.parentElement)
-      }
-    val limit = scroller(el.parentElement).map(_.getBoundingClientRect().bottom).getOrElse(dom.window.innerHeight.toDouble)
-    limit - bottom
-  }
-
-  def copy(text: String, message: String = "コピーしました"): Unit = {
-    dom.window.navigator.clipboard.writeText(text)
-    Store.toast(message)
-  }
-
-}
-
-/** 表示の補助. */
-object Fmt {
-
-  private def opts(o: (String, String)*): js.Dynamic = js.Dynamic.literal(o.map((k, v) => k -> (v: js.Any))*)
-
-  def dateTime(t: Timestamp): String =
-    t.toDate.asInstanceOf[js.Dynamic].toLocaleString("ja-JP", opts("year" -> "numeric", "month" -> "2-digit", "day" -> "2-digit",
-      "hour" -> "2-digit", "minute" -> "2-digit")).asInstanceOf[String]
-
-  /** 「3分前」「昨日」など. */
-  def ago(t: Timestamp): String = {
-    val diff = (js.Date.now() - t.toEpochMilli) / 1000
-    if (diff < 60) "たった今"
-    else if (diff < 3600) s"${(diff / 60).toInt}分前"
-    else if (diff < 86400) s"${(diff / 3600).toInt}時間前"
-    else if (diff < 86400 * 7) s"${(diff / 86400).toInt}日前"
-    else dateTime(t).take(10)
-  }
-
-  /** 2026-11-15 → 11/15(日). */
-  def day(d: String): String = {
-    val dt = new js.Date(d + "T00:00:00")
-    val w  = "日月火水木金土".charAt(dt.getDay().toInt)
-    s"${dt.getMonth().toInt + 1}/${dt.getDate().toInt}($w)"
-  }
-
-  def today(): String = isoDate(new js.Date())
-
-  /** 今の時刻（13:05）. */
-  def clock(): String = { val d = new js.Date(); f"${d.getHours().toInt}%02d:${d.getMinutes().toInt}%02d" }
-
-  def isoDate(d: js.Date): String = f"${d.getFullYear().toInt}%04d-${d.getMonth().toInt + 1}%02d-${d.getDate().toInt}%02d"
-
-  def addDays(d: String, n: Int): String = {
-    val dt = new js.Date(d + "T00:00:00")
-    dt.setDate(dt.getDate() + n)
-    isoDate(dt)
-  }
-
-  def initials(name: String): String = name.trim.take(1)
-
-  def bytes(n: Long): String =
-    if (n < 1024) s"$n B" else if (n < 1024 * 1024) f"${n / 1024.0}%.1f KB" else f"${n / 1024.0 / 1024.0}%.1f MB"
-
-  /** 時刻だけ（13:05）. */
-  def time(t: Timestamp): String = {
-    val d = t.toDate
-    f"${d.getHours().toInt}%02d:${d.getMinutes().toInt}%02d"
-  }
-
-  /** 日付の区切り（今日・昨日・11月15日(日)・2025年11月15日(土)）. */
-  def dayLabel(t: Timestamp): String = {
-    val d = t.toDate
-    val today = new js.Date()
-    val key = isoDate(d)
-    val w = "日月火水木金土".charAt(d.getDay().toInt)
-    if (key == isoDate(today)) "今日"
-    else if (key == addDays(isoDate(today), -1)) "昨日"
-    else if (d.getFullYear() == today.getFullYear()) s"${d.getMonth().toInt + 1}月${d.getDate().toInt}日($w)"
-    else s"${d.getFullYear().toInt}年${d.getMonth().toInt + 1}月${d.getDate().toInt}日($w)"
-  }
-
-  def dayKey(t: Timestamp): String = isoDate(t.toDate)
-
-  /** 定期メッセージのくり返し（「毎週 水曜日 09:00」）. */
-  def schedule(x: ScheduledDto): String = {
-    val when = x.frequency match {
-      case Frequency.Once    => x.runDate.getOrElse("")
-      case Frequency.Weekly  => Frequency.weekdays.find(w => x.weekday.contains(w._1)).map(_._2 + "曜日").getOrElse("")
-      case Frequency.Monthly => x.monthday.fold("")(d => s"${d}日")
-      case _                 => ""
-    }
-    List(Frequency.label(x.frequency), when, x.runTime).filter(_.nonEmpty).mkString(" ")
+    dom.window.setInterval(
+      () =>
+        if (dom.document.visibilityState.toString == "visible" && (!live || js.Date.now() - lastPoll > 60000)) poll(),
+      10000
+    )
+    dom.document.addEventListener(
+      "visibilitychange",
+      (_: dom.Event) => if (dom.document.visibilityState.toString == "visible") poll()
+    )
   }
 
 }
 
 /** 画面内のダイアログ（ブラウザ標準の confirm・prompt・alert の代わり）. 表示は parts/DialogHost.st. */
-final case class DialogReq(message: String, okLabel: String, danger: Boolean, input: Option[RV[String]], choices: List[(String, String)],
-                           cancel: Boolean, onOk: String => Unit, onCancel: () => Unit)
-
-object Dialog {
-
-  val current: RV[Option[DialogReq]] = RV(None)
-
-  private def open(r: DialogReq): Unit = current := Some(r)
-
-  /** 確認（OK を押したら f）. */
-  def confirm(message: String, ok: String = "OK", danger: Boolean = true)(f: => Unit): Unit =
-    open(DialogReq(message, ok, danger, None, Nil, cancel = true, _ => f, () => ()))
-
-  /** 文字の入力（OK を押したら入力した値で f）. */
-  def prompt(message: String, default: String = "", ok: String = "OK")(f: String => Unit): Unit =
-    open(DialogReq(message, ok, danger = false, Some(RV(default)), Nil, cancel = true, f, () => ()))
-
-  /** 選択肢から選ぶ（choices は 値 → 表示名）. */
-  def choose(message: String, choices: List[(String, String)], ok: String = "OK", danger: Boolean = false)(f: String => Unit): Unit =
-    open(DialogReq(message, ok, danger, Some(RV(choices.headOption.map(_._1).getOrElse(""))), choices, cancel = true, f, () => ()))
-
-  def alert(message: String): Unit = open(DialogReq(message, "OK", danger = false, None, Nil, cancel = false, _ => (), () => ()))
-
-  def close(ok: Boolean): Unit = current.v.foreach { r =>
-    current := None
-    if (ok) r.onOk(r.input.map(_.v).getOrElse("")) else r.onCancel()
-  }
-
-  /** 文字の入力（エディタ用）. OK なら入力した値、キャンセルなら null の Promise. */
-  def promptJs(message: String, default: String): js.Promise[js.Any] =
-    new js.Promise[js.Any]((resolve, _) =>
-      open(DialogReq(message, "OK", danger = false, Some(RV(Option(default).getOrElse(""))), Nil, cancel = true,
-        v => resolve(v), () => resolve(null))))
-
-}
+final case class DialogReq(
+  message: String,
+  okLabel: String,
+  danger: Boolean,
+  input: Option[RV[String]],
+  choices: List[(String, String)],
+  cancel: Boolean,
+  onOk: String => Unit,
+  onCancel: () => Unit)
 
 /** この端末だけの表示の設定（localStorage. 使えないときは既定値）. */
 object Prefs {
 
-  def get(key: String, default: String): String =
+  def get(
+    key: String,
+    default: String
+  ): String =
     scala.util.Try(Option(dom.window.localStorage.getItem("stui." + key))).toOption.flatten.getOrElse(default)
 
-  def set(key: String, value: String): Unit = scala.util.Try(dom.window.localStorage.setItem("stui." + key, value))
+  def set(
+    key: String,
+    value: String
+  ): Unit = scala.util.Try(dom.window.localStorage.setItem("stui." + key, value))
 
 }
 
@@ -395,20 +346,40 @@ object Theme {
     if (current.v == "system") el.removeAttribute("data-theme") else el.setAttribute("data-theme", current.v)
   }
 
-  def set(v: String): Unit = { current := v; Prefs.set("theme", v); apply() }
+  def set(
+    v: String
+  ): Unit = { current := v; Prefs.set("theme", v); apply() }
 
   val options: List[(String, String)] = List("system" -> "🖥 自動（OS に合わせる）", "light" -> "☀️ ライト", "dark" -> "🌙 ダーク")
 
 }
 
 /** オートコンプリート（parts/Combo.st）の選択肢. icon は前に付ける文字、user はアイコン、color はラベルの色. */
-final case class Opt(value: String, label: String, icon: String = "", user: Option[UserBrief] = None, color: String = "", hint: String = "")
+final case class Opt(
+  value: String,
+  label: String,
+  icon: String = "",
+  user: Option[UserBrief] = None,
+  color: String = "",
+  hint: String = "")
 
 object Opt {
-  def users(us: List[UserBrief]): List[Opt] = us.map(u => Opt(u.id.toString, u.name, user = Some(u)))
-  def of(xs: List[(String, String)]): List[Opt] = xs.map((v, l) => Opt(v, l))
+  def users(
+    us: List[UserBrief]
+  ): List[Opt] = us.map(u => Opt(u.id.toString, u.name, user = Some(u)))
+  def of(
+    xs: List[(String, String)]
+  ): List[Opt] = xs.map(
+    (
+      v,
+      l
+    ) => Opt(v, l)
+  )
+
   /** 値と表示が同じ選択肢. */
-  def names(xs: List[String]): List[Opt] = xs.map(x => Opt(x, x))
+  def names(
+    xs: List[String]
+  ): List[Opt] = xs.map(x => Opt(x, x))
 }
 
 /** カスタム絵文字（リアクション用. 一度だけ読む）. */
@@ -417,12 +388,16 @@ object Emojis {
   val custom: RV[List[CustomEmojiDto]] = RV(Nil)
   private var loaded = false
 
-  def load(force: Boolean = false): Unit = if (!loaded || force) {
+  def load(
+    force: Boolean = false
+  ): Unit = if (!loaded || force) {
     loaded = true
     Api.get[List[CustomEmojiDto]]("/api/emoji").foreach(custom := _)
   }
 
   /** ":name:" ならカスタム絵文字の画像の URL. */
-  def image(e: String): Option[String] = Reactions.customName(e).map(CustomEmoji.url)
+  def image(
+    e: String
+  ): Option[String] = Reactions.customName(e).map(CustomEmoji.url)
 
 }

@@ -11,40 +11,74 @@ import java.time.{Instant, ZoneId}
 import java.util.UUID
 
 /** DB を使うテスト。TEST_DATABASE_URL がなければ飛ばす（例: jdbc:postgresql://localhost:54379/stui_test）。 */
-class StoreSpec extends CatsEffectSuite:
+class StoreSpec extends CatsEffectSuite {
 
   private val cfg: Option[DbConfig] = sys.env.get("TEST_DATABASE_URL").map(url =>
-    DbConfig(url, sys.env.getOrElse("TEST_DATABASE_USER", "stui"), sys.env.getOrElse("TEST_DATABASE_PASSWORD", "stui")))
+    DbConfig(url, sys.env.getOrElse("TEST_DATABASE_USER", "stui"), sys.env.getOrElse("TEST_DATABASE_PASSWORD", "stui"))
+  )
 
-  private val xaFixture = ResourceSuiteLocalFixture("xa",
+  private val xaFixture = ResourceSuiteLocalFixture(
+    "xa",
     cfg.fold(Resource.eval(IO.raiseError[doobie.Transactor[IO]](new RuntimeException("no db"))))(c =>
-      Resource.eval(Database.migrate(c)) *> Database.transactor(c)))
+      Resource.eval(Database.migrate(c)) *> Database.transactor(c)
+    )
+  )
 
   override def munitFixtures = if cfg.isDefined then List(xaFixture) else Nil
 
-  final case class Stores(users: UserStore, channels: ChannelStore, messages: MessageStore, search: SearchStore, schedule: ScheduleStore,
-      activity: ActivityStore, hooks: HookStore)
+  final case class Stores(
+    users: UserStore,
+    channels: ChannelStore,
+    messages: MessageStore,
+    search: SearchStore,
+    schedule: ScheduleStore,
+    activity: ActivityStore,
+    hooks: HookStore)
 
-  private def withDb(name: String)(body: Stores => IO[Unit]): Unit =
+  private def withDb(
+    name: String
+  )(
+    body: Stores => IO[Unit]
+  ): Unit =
     test(name) {
       if cfg.isEmpty then IO(assume(false, "TEST_DATABASE_URL が未設定"))
-      else
+      else {
         val xa = xaFixture()
         val messages = new MessageStore(xa)
-        body(Stores(new UserStore(xa), new ChannelStore(xa), messages, new SearchStore(xa, messages), new ScheduleStore(xa, messages),
-          new ActivityStore(xa), new HookStore(xa)))
+        body(Stores(
+          new UserStore(xa),
+          new ChannelStore(xa),
+          messages,
+          new SearchStore(xa, messages),
+          new ScheduleStore(xa, messages),
+          new ActivityStore(xa),
+          new HookStore(xa)
+        ))
+      }
     }
 
-  private def user(st: Stores, name: String): IO[User] = st.users.upsert(s"test:${UUID.randomUUID()}", name, None, None)
+  private def user(
+    st: Stores,
+    name: String
+  ): IO[User] = st.users.upsert(s"test:${UUID.randomUUID()}", name, None, None)
 
-  private def uniq(prefix: String) = prefix + "-" + UUID.randomUUID().toString.take(8)
+  private def uniq(
+    prefix: String
+  ) = prefix + "-" + UUID.randomUUID().toString.take(8)
 
-  private def post(st: Stores, c: UUID, u: UUID, text: String, root: Option[UUID] = None): IO[MessageRow] =
+  private def post(
+    st: Stores,
+    c: UUID,
+    u: UUID,
+    text: String,
+    root: Option[UUID] = None
+  ): IO[MessageRow] = {
     val doc = RichText.fromPlain(text)
     st.messages.insert(NewMessage(c, root, false, u, "user", "web", doc, RichText.toPlain(doc), Json.obj()))
+  }
 
   withDb("チャンネルの作成・名前の重複・参加と未読の数") { st =>
-    for
+    for {
       a <- user(st, "山田 太郎")
       b <- user(st, "佐藤 花子")
       name = uniq("開発")
@@ -63,11 +97,11 @@ class StoreSpec extends CatsEffectSuite:
       _ = assertEquals(lb2.unread, 0)
       page <- st.messages.page(c.id, b.id, None, None, None, 50)
       _ = assertEquals(page.messages.map(m => RichText.toPlain(m.body)), List("こんにちは", "二つ目"))
-    yield ()
+    } yield ()
   }
 
   withDb("スレッド: 返信数・フォロー・チャンネルの一覧には出さない・削除") { st =>
-    for
+    for {
       a <- user(st, "親 の人")
       b <- user(st, "返信 する人")
       c <- st.channels.create(uniq("スレッド"), ChannelKind.Public, "", "", a.id, List(b.id)).map(_.toOption.get)
@@ -91,11 +125,11 @@ class StoreSpec extends CatsEffectSuite:
       _ <- st.messages.delete(root.id, a.id)
       page2 <- st.messages.page(c.id, a.id, None, None, None, 50)
       _ = assertEquals(page2.messages.map(m => (m.id, m.deleted)), List(root.id -> true))
-    yield ()
+    } yield ()
   }
 
   withDb("リアクション・ピン留め・保存") { st =>
-    for
+    for {
       a <- user(st, "リアクション")
       c <- st.channels.create(uniq("リアクション"), ChannelKind.Private, "", "", a.id, Nil).map(_.toOption.get)
       m <- post(st, c.id, a.id, "いいね")
@@ -110,11 +144,11 @@ class StoreSpec extends CatsEffectSuite:
       _ = assertEquals(pins.map(_.id), List(m.id))
       saved <- st.messages.saved(a.id, 10)
       _ = assert(saved.exists(_._1.id == m.id))
-    yield ()
+    } yield ()
   }
 
   withDb("DM: 同じ顔ぶれは1つ・グループ DM・自分だけの DM") { st =>
-    for
+    for {
       a <- user(st, "DM A")
       b <- user(st, "DM B")
       x <- user(st, "DM C")
@@ -128,12 +162,15 @@ class StoreSpec extends CatsEffectSuite:
       la <- st.channels.listForUser(a.id)
       _ = assertEquals(la.find(_.id == d1.id).map(_.dmUsers.map(_.id)), Some(List(b.id)))
       _ = assertEquals(la.find(_.id == self.id).map(_.dmUsers.map(_.id)), Some(List(a.id)))
-    yield ()
+    } yield ()
   }
 
   withDb("参加の変更履歴: チャンネルの作成・DM・メンバーの追加で、参加した人ごとに member.joined を残す") { st =>
-    def joined(after: Long, c: UUID) = st.messages.eventsAfter(after).map(_.filter(_._2 == c).flatMap(_._3).toSet)
-    for
+    def joined(
+      after: Long,
+      c: UUID
+    ) = st.messages.eventsAfter(after).map(_.filter(_._2 == c).flatMap(_._3).toSet)
+    for {
       a <- user(st, "参加 A")
       b <- user(st, "参加 B")
       x <- user(st, "参加 C")
@@ -154,12 +191,12 @@ class StoreSpec extends CatsEffectSuite:
       _ <- st.channels.openDm(List(b.id, a.id))
       j4 <- joined(e3, d.id)
       _ = assertEquals(j4, Set.empty[UUID])
-    yield ()
+    } yield ()
   }
 
   withDb("検索: 日本語の部分一致・かなの揺れ・絞り込み・見られないチャンネルは除く") { st =>
     val word = "検索" + UUID.randomUUID().toString.filter(_.isDigit).take(6)
-    for
+    for {
       a <- user(st, "検索 する人")
       b <- user(st, "部外 者")
       pub <- st.channels.create(uniq("公開"), ChannelKind.Public, "", "", a.id, Nil).map(_.toOption.get)
@@ -171,19 +208,43 @@ class StoreSpec extends CatsEffectSuite:
       rb <- st.search.search(b.id, ZoneId.of("Asia/Tokyo"), q, 20, 0).map(_.toOption.get)
       _ = assertEquals(ra._2, 2)
       _ = assertEquals(rb._2, 1)
-      kana <- st.search.search(a.id, ZoneId.of("Asia/Tokyo"), SearchQuery.parse(s"さーばー $word").toOption.get, 20, 0).map(_.toOption.get)
+      kana <- st.search.search(
+        a.id,
+        ZoneId.of("Asia/Tokyo"),
+        SearchQuery.parse(s"さーばー $word").toOption.get,
+        20,
+        0
+      ).map(_.toOption.get)
       _ = assertEquals(kana._2, 1)
-      link <- st.search.search(a.id, ZoneId.of("Asia/Tokyo"), SearchQuery.parse(s"$word has:link").toOption.get, 20, 0).map(_.toOption.get)
+      link <- st.search.search(
+        a.id,
+        ZoneId.of("Asia/Tokyo"),
+        SearchQuery.parse(s"$word has:link").toOption.get,
+        20,
+        0
+      ).map(_.toOption.get)
       _ = assertEquals(link._1.map(_.channel.id), List(pub.id))
-      inCh <- st.search.search(a.id, ZoneId.of("Asia/Tokyo"), SearchQuery.parse(s"$word in:#${priv.name}").toOption.get, 20, 0).map(_.toOption.get)
+      inCh <- st.search.search(
+        a.id,
+        ZoneId.of("Asia/Tokyo"),
+        SearchQuery.parse(s"$word in:#${priv.name}").toOption.get,
+        20,
+        0
+      ).map(_.toOption.get)
       _ = assertEquals(inCh._1.map(_.channel.id), List(priv.id))
-      from <- st.search.search(b.id, ZoneId.of("Asia/Tokyo"), SearchQuery.parse(s"from:me $word").toOption.get, 20, 0).map(_.toOption.get)
+      from <- st.search.search(
+        b.id,
+        ZoneId.of("Asia/Tokyo"),
+        SearchQuery.parse(s"from:me $word").toOption.get,
+        20,
+        0
+      ).map(_.toOption.get)
       _ = assertEquals(from._2, 0)
-    yield ()
+    } yield ()
   }
 
   withDb("リマインダー: 時刻になったものを1回だけ処理する") { st =>
-    for
+    for {
       a <- user(st, "リマインド")
       _ <- st.schedule.createReminder(a.id, "会議の準備", None, Instant.now().minusSeconds(5))
       _ <- st.schedule.createReminder(a.id, "まだ先", None, Instant.now().plusSeconds(3600))
@@ -194,11 +255,11 @@ class StoreSpec extends CatsEffectSuite:
       _ = assertEquals(fs, List("会議の準備"))
       rs <- st.schedule.reminders(a.id, includeDone = false)
       _ = assertEquals(rs.map(r => r.text -> r.fired), List("会議の準備" -> true, "まだ先" -> false))
-    yield ()
+    } yield ()
   }
 
   withDb("変更履歴: 参加しているチャンネルの変更だけを返す") { st =>
-    for
+    for {
       a <- user(st, "変更 A")
       b <- user(st, "変更 B")
       since <- st.messages.latestEvent
@@ -208,22 +269,35 @@ class StoreSpec extends CatsEffectSuite:
       cb <- st.messages.changes(b.id, since, None)
       _ = assert(ca.events.exists(_.messageId.contains(m.id)))
       _ = assert(!cb.events.exists(_.channelId == c.id))
-    yield ()
+    } yield ()
   }
 
   withDb("本文に埋め込んだ画像はメッセージに結び付け、添付の一覧には出さない") { st =>
-    for
+    for {
       a <- user(st, "画像 の人")
       c <- st.channels.create(uniq("画像"), ChannelKind.Public, "", "", a.id, Nil).map(_.toOption.get)
-      img  <- st.messages.addAttachment(c.id, "k1", "図.png", 10, "image/png", "x", a.id)
+      img <- st.messages.addAttachment(c.id, "k1", "図.png", 10, "image/png", "x", a.id)
       file <- st.messages.addAttachment(c.id, "k2", "資料.pdf", 10, "application/pdf", "y", a.id)
-      doc = io.circe.parser.parse(s"""{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"見て"}]},
+      doc =
+        io.circe.parser.parse(s"""{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"見て"}]},
               {"type":"image","attrs":{"src":"${Files.url(img.id, "図.png")}","alt":"図.png"}}]}""").toOption.get
-      m <- st.messages.insert(NewMessage(c.id, None, false, a.id, "user", "web", doc, RichText.toPlain(doc), Json.obj(), List(file.id)))
+      m <- st.messages.insert(NewMessage(
+        c.id,
+        None,
+        false,
+        a.id,
+        "user",
+        "web",
+        doc,
+        RichText.toPlain(doc),
+        Json.obj(),
+        List(file.id)
+      ))
       v <- st.messages.view(m.id, a.id).map(_.get)
       _ = assertEquals(v.attachments.map(_.fileName), List("資料.pdf"))
       linked <- st.messages.attachment(img.id)
       _ = assertEquals(linked.flatMap(_.messageId), Some(m.id))
       _ = assert(v.html.contains("<img"))
-    yield ()
+    } yield ()
   }
+}

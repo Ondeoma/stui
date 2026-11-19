@@ -148,7 +148,7 @@ def channelLabel(props: Props): String = Store.channel(props.channelId).map(c =>
           <EmojiPicker v-if="s.picker" :onPick="e => emoji(s, e)" :onClose="_ => s.picker := false" />
         </span>
         <button class="ghost tb" title="メンション" @click='s.editor.v.foreach(_.insertText("@"))'>＠</button>
-        <button v-if="meetings" class="ghost tb" title="Web 会議を始める（skaka）" @click="meeting(s, props)"><span class="ico ico-video"></span></button>
+        <button v-if="meetings" class="ghost tb" :title='"Web 会議を始める（" + AppNames.nameOf("skaka") + "）"' @click="meeting(s, props)"><span class="ico ico-video"></span></button>
         <label v-if="isThread(props)" class="also"><input type="checkbox" v-model="s.also"> {{ channelLabel(props) }} にも送信</label>
         <span class="grow"></span>
         <span v-if="!isThread(props)" class="hint">Enter で送信・Shift+Enter で改行</span>

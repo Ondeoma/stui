@@ -25,7 +25,7 @@ def mounted(): Unit = pageTitle("ログイン")
   <div class="page narrow">
     <div class="card login">
       <img src="/logo.svg" alt="stui" width="96" height="96" class="login-logo">
-      <h1>stui にログイン</h1>
+      <h1>{{ AppNames.self }} にログイン</h1>
       <p class="muted small">開発用のログインです（IdP が設定されていない環境だけで使えます）。</p>
       <form @submit.prevent="login(s)">
         <label class="field"><span>名前</span><input type="text" v-model="s.name" placeholder="山田 太郎" autofocus></label>

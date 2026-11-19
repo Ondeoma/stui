@@ -34,7 +34,7 @@ def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
 
 <template>
   <div class="head">
-    <a href="/" class="brand" @click.prevent='nav("/")'><img src="/logo.svg" alt="" width="26" height="26"><span>stui</span></a>
+    <a href="/" class="brand" @click.prevent='nav("/")'><img :src='AppNames.logo("/logo.svg").v' alt="" height="26" class="brand-logo"><span>{{ AppNames.self }}</span></a>
   </div>
   <nav class="scroll">
     <a href="/threads" :class='navCls("/threads")' @click.prevent='nav("/threads")'><span class="ic"><span class="ico ico-thread"></span></span><span class="name">スレッド</span>
@@ -86,7 +86,7 @@ def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
 .head { height: var(--header); display: flex; align-items: center; padding: 0 1rem; border-bottom: 1px solid var(--side-line); flex: none; }
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 800; font-size: 1.15rem; color: var(--side-fg); letter-spacing: .02em; }
 .brand:hover { text-decoration: none; }
-.brand img { border-radius: 7px; }
+.brand img { border-radius: 7px; width: auto; max-width: 120px; }
 .scroll { flex: 1; overflow-y: auto; padding: .5rem .45rem 2rem; min-height: 0; }
 .item { display: flex; align-items: center; gap: .45rem; padding: .28rem .55rem; border-radius: 7px; color: var(--side-muted); font-size: .92rem;
   line-height: 1.35; }

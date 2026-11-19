@@ -167,7 +167,7 @@ def me(u: UserDto): Boolean = Store.myId.contains(u.id)
       </div>
     </div>
     <div v-if='isTab(s, "agents")'>
-      <p class="muted small">エージェント専用アカウントは、skakapo などの外部の AI エージェントが stui の MCP（<code>/mcp</code>）・REST API を呼ぶための、ログインしないアカウントです。
+      <p class="muted small">エージェント専用アカウントは、skakapo などの外部の AI エージェントが {{ AppNames.self }} の MCP（<code>/mcp</code>）・REST API を呼ぶための、ログインしないアカウントです。
         ここで作って APIキーを発行し、エージェント側に登録します（admin スコープは付けられません）。</p>
       <p class="muted small">エージェントは<b>このアカウント自身の権限</b>で動きます。公開チャンネルにはエージェントが自分で参加できます。
         非公開チャンネルは、ここの「チャンネルに参加させる」で参加させてください。

@@ -53,12 +53,15 @@ def disconnect(s: State, l: LinkServiceDto): Unit = Dialog.confirm(s"${l.name} �
 }
 
 /** 連携すると何ができるか. */
-def what(p: String): String = p match {
-  case "skawau" => "メッセージに貼った skawau のファイル・フォルダの URL に、あなたの skawau の権限でファイル名を表示します"
-  case "skea"   => "メッセージに貼った skea のタスクの URL に、あなたの skea の権限でタスクのタイトルと状態を表示します"
-  case "skaka"  => "チャンネル・DM の入力欄のカメラのボタンで、あなたとして skaka に会議室を作り、その場に案内を投稿できます"
-  case "skorimako" => "メッセージに貼った skorimako のトレース・アラート・ダッシュボードの URL に、あなたの skorimako の権限で名前と状態を表示します"
-  case _        => "メッセージに貼った skiwi のページの URL に、あなたの skiwi の権限でページのタイトルを表示します"
+def what(p: String): String = {
+  val n = AppNames.nameOf(p)
+  p match {
+    case "skawau"    => s"メッセージに貼った $n のファイル・フォルダの URL に、あなたの $n の権限でファイル名を表示します"
+    case "skea"      => s"メッセージに貼った $n のタスクの URL に、あなたの $n の権限でタスクのタイトルと状態を表示します"
+    case "skaka"     => s"チャンネル・DM の入力欄のカメラのボタンで、あなたとして $n に会議室を作り、その場に案内を投稿できます"
+    case "skorimako" => s"メッセージに貼った $n のトレース・アラート・ダッシュボードの URL に、あなたの $n の権限で名前と状態を表示します"
+    case _           => s"メッセージに貼った $n のページの URL に、あなたの $n の権限でページのタイトルを表示します"
+  }
 }
 
 def setDesktop(s: State, on: Boolean): Unit = {
@@ -180,7 +183,7 @@ def via(k: ApiKeyDto): String = k.client.fold("")(c => s"（$c 連携）")
 
     <section class="panel">
       <h2>APIキー（REST API・MCP）</h2>
-      <p class="muted small">プログラムや AI（MCP）から stui を使うためのキーです。<code>Authorization: Bearer &lt;キー&gt;</code> で送ります。
+      <p class="muted small">プログラムや AI（MCP）から {{ AppNames.self }} を使うためのキーです。<code>Authorization: Bearer &lt;キー&gt;</code> で送ります。
         権限は「あなたの権限」と「キーのスコープ」の両方を満たす範囲です。</p>
       <form @submit.prevent="createKey(s)">
         <div class="row">

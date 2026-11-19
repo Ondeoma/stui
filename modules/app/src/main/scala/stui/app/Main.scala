@@ -1,179 +1,97 @@
 package stui.app
 
+import sbirds.links.IntegrationTokenStore
 import cats.effect.*
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import doobie.implicits.*
 import fs2.io.file.Path
 import org.http4s.*
-import org.http4s.circe.CirceEntityEncoder.*
 import org.http4s.dsl.io.*
 import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.ember.server.EmberServerBuilder
-import org.http4s.server.middleware.ErrorHandling
+import sbirds.http.Errors
+import stui.core.ErrorCode
 import org.http4s.server.staticcontent.*
 import stui.api.*
-import stui.auth.{OidcClient, OidcConfig, SecretBox}
+import sbirds.auth.{OidcClient, OidcConfig}
+import stui.auth.SecretBox
 import stui.db.*
-import stui.notify.{SmtpConfig, SmtpMailer}
-import stui.observe.{HttpClientTelemetry, HttpTelemetry, Metrics, RumRoutes, Telemetry}
-import stui.shared.ErrorDto
-import stui.storage.{S3BlobStore, S3Config}
+import sbirds.mail.{SmtpConfig, SmtpMailer}
+import sbirds.observe.{HttpClientTelemetry, HttpTelemetry, Metrics, RumRoutes, Telemetry}
+import sbirds.storage.{S3BlobStore, S3Config}
 
 import scala.concurrent.duration.*
 
 final case class AppConfig(
-    port: Int,
-    db: DbConfig,
-    oidc: Option[OidcConfig],
-    api: ApiConfig,
-    staticDir: Option[String],
-    s3: Option[S3Config],
-    smtp: Option[SmtpConfig],
-    appSecret: String,
-    nodeId: String,
-    mailDelaySeconds: Int
-)
+  port: Int,
+  db: DbConfig,
+  oidc: Option[OidcConfig],
+  api: ApiConfig,
+  staticDir: Option[String],
+  s3: Option[S3Config],
+  smtp: Option[SmtpConfig],
+  appSecret: String,
+  nodeId: String,
+  mailDelaySeconds: Int)
 
-/** 設定は環境変数から読む。 */
-object Config:
-  private def opt(name: String): Option[String] = sys.env.get(name).map(_.trim).filter(_.nonEmpty)
-  private def int(name: String): Option[Int]    = opt(name).flatMap(_.toIntOption)
-  private def enabled(name: String): Boolean    = opt(name).exists(_.equalsIgnoreCase("true"))
-  private def required(name: String): Either[String, String] = opt(name).toRight(s"環境変数 $name を設定してください")
-
-  /** OAUTH_CLIENTS: [{"id":"skea","secret":"…","redirectUri":"https://…/callback","name":"skea","scopes":["read","write"]}] */
-  private def oauthClients: Either[String, List[stui.api.OAuthClient]] =
-    opt("OAUTH_CLIENTS").fold(Right(Nil)) { s =>
-      io.circe.parser.parse(s).flatMap(_.as[List[io.circe.Json]]).left.map(_ => "OAUTH_CLIENTS は JSON の配列で指定してください").flatMap(_.traverse { j =>
-        val c = j.hcursor
-        (c.get[String]("id"), c.get[String]("secret"), c.get[String]("redirectUri")).tupled.toOption
-          .filter((id, sec, uri) => id.nonEmpty && sec.length >= 16 && (uri.startsWith("https://") || uri.startsWith("http://localhost")))
-          .map((id, sec, uri) => stui.api.OAuthClient(id, sec, uri, c.get[String]("name").getOrElse(id),
-            c.get[List[String]]("scopes").toOption.map(_.filter(Set("read", "write"))).filter(_.nonEmpty).getOrElse(List("read"))))
-          .toRight("OAUTH_CLIENTS の各要素には id・secret（16文字以上）・redirectUri（https://）を指定してください")
-      })
-    }
-
-  /** DB（DATABASE_URL・DATABASE_USER・DATABASE_PASSWORD）。取り込みのコマンドでも使う。 */
-  def db: Either[String, DbConfig] =
-    (required("DATABASE_URL"), required("DATABASE_USER"), required("DATABASE_PASSWORD"))
-      .mapN((u, n, p) => DbConfig(u, n, p, int("DATABASE_POOL_SIZE").getOrElse(10)))
-
-  /** 添付ファイルの置き場所（S3_*. 未設定なら None）。 */
-  def s3: Option[S3Config] =
-    opt("S3_ENDPOINT").map(ep => S3Config(ep, opt("S3_REGION").getOrElse("us-east-1"), opt("S3_BUCKET").getOrElse("stui"),
-      opt("S3_ACCESS_KEY").getOrElse(""), opt("S3_SECRET_KEY").getOrElse(""), !opt("S3_PATH_STYLE").contains("false")))
-
-  def load: IO[AppConfig] = IO.fromEither(
-    (for
-      dbCfg  <- db
-      pub    <- required("PUBLIC_URL")
-      devLogin = enabled("DEV_LOGIN")
-      _ <- Either.cond(!(devLogin && pub.startsWith("https://")), (), "DEV_LOGIN（開発用のログイン）は https の PUBLIC_URL では使えません")
-      oidc <- (opt("OIDC_ISSUER"), opt("OIDC_CLIENT_ID"), opt("OIDC_CLIENT_SECRET")) match
-                case (Some(_), Some(_), Some(_)) if devLogin => Left("DEV_LOGIN（開発用のログイン）は OIDC と同時には使えません。本番では DEV_LOGIN を外してください")
-                case (Some(i), Some(c), Some(s)) =>
-                  Right(Some(OidcConfig(i, c, s, s"${pub.stripSuffix("/")}/auth/callback", opt("OIDC_GROUPS_CLAIM").getOrElse("groups"))))
-                case (None, None, None) if devLogin => Right(None)
-                case _ => Left("OIDC_ISSUER・OIDC_CLIENT_ID・OIDC_CLIENT_SECRET を設定してください（開発中は DEV_LOGIN=true で省略できます）")
-      secret <- opt("APP_SECRET") match
-                  case Some(s) if s.length >= 16 => Right(s)
-                  case Some(_) => Left("APP_SECRET は16文字以上にしてください")
-                  case None if devLogin => Right("stui-development-secret")
-                  case None => Left("APP_SECRET（16文字以上の秘密の値）を設定してください")
-      clients <- oauthClients
-      tz <- opt("TIMEZONE").getOrElse("Asia/Tokyo") match
-              case z if scala.util.Try(java.time.ZoneId.of(z)).isSuccess => Right(z)
-              case z => Left(s"TIMEZONE が正しくありません: $z（例: Asia/Tokyo）")
-    yield
-      val base = pub.stripSuffix("/")
-      AppConfig(
-        port = int("HTTP_PORT").getOrElse(8080),
-        db = dbCfg,
-        oidc = oidc,
-        api = ApiConfig(
-          adminGroups = opt("ADMIN_GROUPS").map(_.split(',').map(_.trim).filter(_.nonEmpty).toSet).getOrElse(Set.empty),
-          cookieSecure = base.startsWith("https://"),
-          publicUrl = base,
-          devLogin = devLogin,
-          maxUploadBytes = int("MAX_UPLOAD_MB").getOrElse(100).toLong * 1024 * 1024,
-          timezone = tz,
-          webhookAllowHttp = enabled("WEBHOOK_ALLOW_HTTP"),
-          webhookAllowPrivate = enabled("WEBHOOK_ALLOW_PRIVATE"),
-          oauthClients = clients,
-          // SKIWI_URL・SKIWI_CLIENT_ID・SKIWI_CLIENT_SECRET（SKAWAU_*・SKEA_*・SKAKA_* も同じ。*_INTERNAL_URL はサーバーから呼ぶ URL）
-          linkServices = stui.api.LinkServiceRoutes.providers.flatMap { p =>
-            val e = p.toUpperCase
-            (opt(s"${e}_URL"), opt(s"${e}_CLIENT_ID"), opt(s"${e}_CLIENT_SECRET")).mapN((u, id, sec) =>
-              stui.api.LinkService(p, u.stripSuffix("/"), id, sec, opt(s"${e}_INTERNAL_URL").map(_.stripSuffix("/"))))
-          }
-        ),
-        staticDir = opt("STATIC_DIR"),
-        s3 = s3,
-        smtp = opt("SMTP_HOST").map { h =>
-          val tls = opt("SMTP_TLS").getOrElse("starttls").toLowerCase
-          SmtpConfig(h, int("SMTP_PORT").getOrElse(if tls == "ssl" then 465 else if tls == "none" then 25 else 587), opt("SMTP_USER"),
-            opt("SMTP_PASSWORD"), tls, opt("MAIL_FROM").getOrElse(s"stui@$h"))
-        },
-        appSecret = secret,
-        nodeId = opt("NODE_ID").getOrElse(java.net.InetAddress.getLocalHost.getHostName + "-" + java.util.UUID.randomUUID().toString.take(8)),
-        mailDelaySeconds = int("MAIL_DELAY_MINUTES").getOrElse(10) * 60
-      )
-    ).left.map(new IllegalArgumentException(_))
-  )
-
-object Main extends IOApp.Simple:
+object Main extends IOApp.Simple {
 
   // ログにトレースの ID・操作したユーザーを載せるため、IOLocal の文脈を Java のライブラリから見えるようにする
   // （IORuntime を作る前に設定する必要がある. オブジェクトの初期化は main より先に動く）
   Telemetry.prepare()
 
-  private val version = Option(getClass.getPackage.getImplementationVersion).orElse(sys.env.get("APP_VERSION")).getOrElse("dev")
+  private val version =
+    Option(getClass.getPackage.getImplementationVersion).orElse(sys.env.get("APP_VERSION")).getOrElse("dev")
 
   private given org.typelevel.log4cats.LoggerFactory[IO] = org.typelevel.log4cats.slf4j.Slf4jFactory.create[IO]
 
   def run: IO[Unit] =
-    for
+    for {
       // 名前解決の結果を30秒は使い回す。送信の Webhook で、確かめた IP と実際につなぐ IP を同じにする（DNS rebinding を防ぐ）
-      _   <- IO(java.security.Security.setProperty("networkaddress.cache.ttl", "30"))
+      _ <- IO(java.security.Security.setProperty("networkaddress.cache.ttl", "30"))
       cfg <- Config.load
-      n   <- migrateWithRetry(cfg)
-      _   <- stui.observe.Log.println(s"[stui] database migrated ($n migration(s) applied); node ${cfg.nodeId}")
-      _ <- (for
-        _     <- Telemetry.resource("stui", version, runtime)
-        xa    <- Database.transactor(cfg.db)
-        _     <- gauges(xa)
+      n <- migrateWithRetry(cfg)
+      _ <- sbirds.observe.Log.println(s"[stui] database migrated ($n migration(s) applied); node ${cfg.nodeId}")
+      _ <- (for {
+        _ <- Telemetry.resource("stui", version, runtime)
+        xa <- Database.transactor(cfg.db)
+        _ <- gauges(xa)
         // 外への呼び出しもトレースに出す（traceparent を付けて送る）
-        http  <- EmberClientBuilder.default[IO].withTimeout(30.seconds).build.map(HttpClientTelemetry(_))
-        users    = new UserStore(xa)
+        http <- EmberClientBuilder.default[IO].withTimeout(30.seconds).build.map(HttpClientTelemetry(_))
+        users = new UserStore(xa)
         channels = new ChannelStore(xa)
         messages = new MessageStore(xa)
         activity = new ActivityStore(xa)
-        hooks    = new HookStore(xa)
-        search   = new SearchStore(xa, messages)
+        hooks = new HookStore(xa)
+        search = new SearchStore(xa, messages)
         schedule = new ScheduleStore(xa, messages)
-        emojis   = new EmojiStore(xa)
-        lock     = new JobLock(xa, cfg.nodeId)
-        box      = new SecretBox(cfg.appSecret)
-        oidc  <- Resource.eval(cfg.oidc.traverse(OidcClient.create(_, http)))
+        emojis = new EmojiStore(xa)
+        lock = new JobLock(xa, cfg.nodeId)
+        box = SecretBox(cfg.appSecret)
+        oidc <- Resource.eval(cfg.oidc.traverse(OidcClient.create(_, http)))
         blobs <- blobStore(cfg)
-        sess     = new SessionAuth(users, cfg.api)
-        access   = new Access2(channels, messages)
-        pushStore = new stui.push.PushStore(xa)
-        push    <- Resource.eval(stui.push.PushService.create(pushStore, http, cfg.api.publicUrl, "stui"))
+        sess = new SessionAuth(users, cfg.api)
+        access = new Access2(channels, messages)
+        pushStore = new sbirds.push.PushStore(xa)
+        push <- Resource.eval(sbirds.push.PushService.create(pushStore, http, cfg.api.publicUrl, "stui"))
         notifier = new NotifyService(activity, cfg.api, cfg.mailDelaySeconds, Some(push))
-        chat     = new ChatService(channels, messages, users, access, notifier, hooks, activity, cfg.api)
+        chat = new ChatService(channels, messages, users, access, notifier, hooks, activity, cfg.api)
         webhooks = new WebhookService(hooks, users, channels, chat, http, cfg.api)
-        sched    = new ScheduleService(schedule, messages, channels, users, chat, notifier, sess)
-        mailer   = cfg.smtp.map(new SmtpMailer(_))
-        feed    <- Resource.eval(EventFeed(messages, activity))
-        cache   <- Resource.eval(LinkServiceRoutes.newCache)
+        sched = new ScheduleService(schedule, messages, channels, users, chat, notifier, sess)
+        mailer = cfg.smtp.map(new SmtpMailer(_))
+        feed <- Resource.eval(EventFeed(messages, activity))
+        cache <- Resource.eval(LinkServiceRoutes.newCache)
         _ <- Resource.eval(startupNotes(cfg))
         loops = List[IO[Unit]](
-                  notifier.mailLoop(mailer), webhooks.loop, webhooks.purgeLoop, sched.reminderLoop, sched.scheduledLoop, feed.loop,
-                  purgeLoop(users, activity, messages, blobs, lock)
-                )
+          notifier.mailLoop(mailer),
+          webhooks.loop,
+          webhooks.purgeLoop,
+          sched.reminderLoop,
+          sched.scheduledLoop,
+          feed.loop,
+          purgeLoop(users, activity, messages, blobs, lock)
+        )
         _ <- loops.traverse_(_.background)
         rest =
           healthRoutes(xa, cfg.nodeId) <+>
@@ -189,83 +107,149 @@ object Main extends IOApp.Simple:
             new AppRoutes(channels, users, chat, notifier, sess, access, cfg.api).routes <+>
             new StreamRoutes(feed, channels, sess, access).routes <+>
             new OAuthRoutes(new OAuthStore(xa), activity, sess, access, cfg.api).routes <+>
-            new LinkServiceRoutes(new IntegrationTokenStore(xa), http, box, cache, chat, sess, access, cfg.api).routes <+>
+            new LinkServiceRoutes(
+              new IntegrationTokenStore(xa),
+              http,
+              box,
+              cache,
+              chat,
+              sess,
+              access,
+              cfg.api
+            ).routes <+>
             RumRoutes.routes <+>
             new PushRoutes(pushStore, push, sess, access).routes
         app = rest <+> new McpRoutes(rest, sess, cfg.api.publicUrl).routes
         all = cfg.staticDir.fold(app)(d => app <+> spa(d))
-        httpApp <- HttpTelemetry(ErrorHandling.Custom.recoverWith(Guards(all, cfg.api).orNotFound)(handler), List("/api", "/auth", "/mcp", "/oauth", "/hooks"))
+        httpApp <- HttpTelemetry(
+          Errors.handle(Guards(all, cfg.api).orNotFound, ErrorCode.Unexpected),
+          List("/api", "/auth", "/mcp", "/oauth", "/hooks")
+        )
         _ <- EmberServerBuilder.default[IO]
-               .withHost(ipv4"0.0.0.0")
-               .withPort(Port.fromInt(cfg.port).getOrElse(port"8080"))
-               .withShutdownTimeout(5.seconds)
-               .withHttpApp(httpApp)
-               .build
-        _ <- Resource.eval(stui.observe.Log.println(s"[stui] listening on :${cfg.port} (${cfg.api.publicUrl})"))
-      yield ()).useForever
-    yield ()
+          .withHost(ipv4"0.0.0.0")
+          .withPort(Port.fromInt(cfg.port).getOrElse(port"8080"))
+          .withShutdownTimeout(5.seconds)
+          .withHttpApp(httpApp)
+          .build
+        _ <- Resource.eval(sbirds.observe.Log.println(s"[stui] listening on :${cfg.port} (${cfg.api.publicUrl})"))
+      } yield ()).useForever
+    } yield ()
 
   /** DB（Patroni のプライマリ）が使えるまで待ってからマイグレーションする。複数ノード同時起動でも Flyway のロックで1回だけ適用される。 */
-  private def migrateWithRetry(cfg: AppConfig, attempt: Int = 1): IO[Int] =
+  private def migrateWithRetry(
+    cfg: AppConfig,
+    attempt: Int = 1
+  ): IO[Int] =
     Database.migrate(cfg.db).handleErrorWith { e =>
       if attempt >= 60 then IO.raiseError(e)
-      else stui.observe.Log.println(s"[stui] database not ready (${e.getMessage.take(120)}); retry $attempt/60") *> IO.sleep(2.seconds) *> migrateWithRetry(cfg, attempt + 1)
+      else
+        sbirds.observe.Log.println(s"[stui] database not ready (${e.getMessage.take(120)}); retry $attempt/60") *>
+          IO.sleep(2.seconds) *> migrateWithRetry(cfg, attempt + 1)
     }
 
   /** DB から定期的に読むメトリクス（skorimako のダッシュボード・アラート用）。 */
-  private def gauges(xa: doobie.Transactor[IO]): Resource[IO, Unit] =
-    def q(sqlText: doobie.Fragment): IO[Long] = sqlText.query[Long].unique.transact(xa)
+  private def gauges(
+    xa: doobie.Transactor[IO]
+  ): Resource[IO, Unit] = {
+    def q(
+      sqlText: doobie.Fragment
+    ): IO[Long] = sqlText.query[Long].unique.transact(xa)
     List(
-      Metrics.gauge("stui.users.total", "有効なユーザーの数（ボットを除く）")(q(sql"select count(*) from app_user where not disabled and not is_bot")),
-      Metrics.gauge("stui.users.active_24h", "24時間以内にログインしたユーザーの数")(q(sql"select count(*) from app_user where last_login_at > now() - interval '24 hours'")),
-      Metrics.gauge("stui.sessions.active", "有効なセッションの数")(q(sql"select count(*) from session where expires_at > now()")),
+      Metrics.gauge(
+        "stui.users.total",
+        "有効なユーザーの数（ボットを除く）"
+      )(q(sql"select count(*) from app_user where not disabled and not is_bot")),
+      Metrics.gauge(
+        "stui.users.active_24h",
+        "24時間以内にログインしたユーザーの数"
+      )(q(sql"select count(*) from app_user where last_login_at > now() - interval '24 hours'")),
+      Metrics.gauge(
+        "stui.sessions.active",
+        "有効なセッションの数"
+      )(q(sql"select count(*) from session where expires_at > now()")),
       Metrics.gauge("stui.channels.total", "チャンネルの数")(q(sql"select count(*) from channel")),
-      Metrics.gauge("stui.messages.last_24h", "24時間以内の投稿の数")(q(sql"select count(*) from message where created_at > now() - interval '24 hours'")),
-      Metrics.gauge("stui.mail.outbox", "送信待ちのメールの数")(q(sql"select count(*) from mail_outbox where sent_at is null and not skipped")),
-      Metrics.gauge("stui.webhook.pending", "送信待ちの Webhook の数")(q(sql"select count(*) from webhook_delivery where done_at is null and not failed"))
+      Metrics.gauge(
+        "stui.messages.last_24h",
+        "24時間以内の投稿の数"
+      )(q(sql"select count(*) from message where created_at > now() - interval '24 hours'")),
+      Metrics.gauge(
+        "stui.mail.outbox",
+        "送信待ちのメールの数"
+      )(q(sql"select count(*) from mail_outbox where sent_at is null and not skipped")),
+      Metrics.gauge(
+        "stui.webhook.pending",
+        "送信待ちの Webhook の数"
+      )(q(sql"select count(*) from webhook_delivery where done_at is null and not failed"))
     ).sequence_
+  }
 
   /** ロードバランサー用のヘルスチェック。DB（プライマリ）に書けない状態なら 503。 */
-  private def healthRoutes(xa: doobie.Transactor[IO], node: String): HttpRoutes[IO] = HttpRoutes.of[IO] {
+  private def healthRoutes(
+    xa: doobie.Transactor[IO],
+    node: String
+  ): HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "healthz" =>
       sql"select not pg_is_in_recovery()".query[Boolean].unique.transact(xa).timeout(3.seconds).attempt.flatMap {
-        case Right(true)  => text(Status.Ok, s"ok $node")
+        case Right(true) => text(Status.Ok, s"ok $node")
         case Right(false) => text(Status.ServiceUnavailable, "database is read-only (not primary)")
-        case Left(e)      => text(Status.ServiceUnavailable, s"database unavailable: ${e.getMessage}")
+        case Left(e) => text(Status.ServiceUnavailable, s"database unavailable: ${e.getMessage}")
       }
   }
 
-  private def text(status: Status, body: String): IO[Response[IO]] =
+  private def text(
+    status: Status,
+    body: String
+  ): IO[Response[IO]] =
     IO.pure(Response[IO](status).withEntity(body)(using EntityEncoder.stringEncoder))
 
-  private def blobStore(cfg: AppConfig): Resource[IO, Option[stui.storage.BlobStore]] = cfg.s3 match
+  private def blobStore(
+    cfg: AppConfig
+  ): Resource[IO, Option[sbirds.storage.BlobStore]] = cfg.s3 match {
     case Some(c) => S3BlobStore.resource(c).evalTap(_.ensureBucket).map(Some(_))
-    case None    => Resource.eval(stui.observe.Log.println("[stui] WARNING: S3_ENDPOINT が未設定のため、添付ファイルは使えません").as(None))
-
-  private def startupNotes(cfg: AppConfig): IO[Unit] =
-    IO.whenA(cfg.smtp.isEmpty)(stui.observe.Log.println("[stui] WARNING: SMTP_HOST が未設定のため、メールは送りません")) *>
-      IO.whenA(cfg.oidc.isEmpty)(stui.observe.Log.println("[stui] WARNING: OIDC が未設定です。開発用のログイン（DEV_LOGIN）を使います。本番では使わないでください"))
-
-  private val handler: PartialFunction[Throwable, IO[Response[IO]]] = {
-    case _: org.http4s.server.middleware.EntityLimiter.EntityTooLarge => PayloadTooLarge(ErrorDto("本文が大きすぎます"))
-    case e =>
-    IO(org.slf4j.LoggerFactory.getLogger("stui").error("unhandled error", e)) *> InternalServerError(ErrorDto("サーバーでエラーが発生しました"))
+    case None => Resource.eval(sbirds.observe.Log.println("[stui] WARNING: S3_ENDPOINT が未設定のため、添付ファイルは使えません").as(None))
   }
 
+  private def startupNotes(
+    cfg: AppConfig
+  ): IO[Unit] =
+    IO.whenA(cfg.smtp.isEmpty)(sbirds.observe.Log.println("[stui] WARNING: SMTP_HOST が未設定のため、メールは送りません")) *>
+      IO.whenA(
+        cfg.oidc.isEmpty
+      )(sbirds.observe.Log.println("[stui] WARNING: OIDC が未設定です。開発用のログイン（DEV_LOGIN）を使います。本番では使わないでください"))
+
   /** 期限切れのセッション・古い通知・変更履歴・監査ログ・投稿されなかった添付を消す（1ノードだけ）。 */
-  private def purgeLoop(users: UserStore, activity: ActivityStore, messages: MessageStore, blobs: Option[stui.storage.BlobStore], lock: JobLock): IO[Unit] =
-    Periodic.run(10.minutes, 1.hour)(e => s"[stui] purge failed: $e")(lock.exclusive("purge", 50.minutes)(
-      IO.realTimeInstant.flatMap(users.purgeExpired) *> activity.purgeOld(180).void *> messages.purgeEvents(14).void *> activity.purgeAudit(730).void *>
-        messages.orphanAttachments.flatMap(_.traverse_((_, key) => blobs.traverse_(_.delete(key).handleError(_ => ()))))))
+  private def purgeLoop(
+    users: UserStore,
+    activity: ActivityStore,
+    messages: MessageStore,
+    blobs: Option[sbirds.storage.BlobStore],
+    lock: JobLock
+  ): IO[Unit] =
+    Periodic.run(10.minutes, 1.hour, ErrorCode.PurgeFailed)(lock.exclusive("purge", 50.minutes)(
+      IO.realTimeInstant.flatMap(users.purgeExpired) *> activity.purgeOld(180).void *> messages.purgeEvents(14).void *>
+        activity.purgeAudit(730).void *>
+        messages.orphanAttachments.flatMap(_.traverse_(
+          (
+            _,
+            key
+          ) => blobs.traverse_(_.delete(key).handleError(_ => ()))
+        ))
+    ))
 
   /** ビルド済みの画面の配信。存在しないパスは index.html（SPA）。 */
-  private def spa(dir: String): HttpRoutes[IO] =
+  private def spa(
+    dir: String
+  ): HttpRoutes[IO] = {
     val files = fileService[IO](FileService.Config(dir))
     val index = HttpRoutes.of[IO] {
-      case req @ GET -> _ if !Set("api", "auth", "hooks", "mcp", "oauth").exists(p => req.pathInfo.renderString.startsWith("/" + p)) =>
+      case req @ GET -> _
+          if !Set("api", "auth", "hooks", "mcp", "oauth").exists(p => req.pathInfo.renderString.startsWith("/" + p)) =>
         StaticFile.fromPath(Path(dir) / "index.html", Some(req)).getOrElseF(NotFound())
     }
     HttpRoutes[IO] { req =>
-      val cc = if req.pathInfo.renderString.startsWith("/assets/") then "public, max-age=31536000, immutable" else "no-cache"
+      val cc =
+        if req.pathInfo.renderString.startsWith("/assets/") then "public, max-age=31536000, immutable" else "no-cache"
       (files <+> index).run(req).map(_.putHeaders("Cache-Control" -> cc))
     }
+  }
+}

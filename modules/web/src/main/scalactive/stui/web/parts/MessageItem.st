@@ -161,7 +161,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
           </div>
           <div v-if="meeting(props).isDefined" class="meeting">
             <span class="mic"><span class="ico ico-video"></span></span>
-            <div class="grow"><b>{{ meeting(props).map(_._2).getOrElse("") }}</b><div class="muted small">skaka の Web 会議</div></div>
+            <div class="grow"><b>{{ meeting(props).map(_._2).getOrElse("") }}</b><div class="muted small">{{ AppNames.of("skaka") }} の Web 会議</div></div>
             <a class="btn primary small" :href='meeting(props).map(_._1).getOrElse("#")' target="_blank" rel="noopener">参加する</a>
           </div>
           <div v-if="images(props).nonEmpty" class="images">
