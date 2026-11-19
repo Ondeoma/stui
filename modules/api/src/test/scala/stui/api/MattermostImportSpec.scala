@@ -37,22 +37,12 @@ class MattermostImportSpec extends CatsEffectSuite {
   /** S3 の代わり（メモリに持つ）。 */
   private final class MemBlobs extends BlobStore {
     val data = scala.collection.concurrent.TrieMap.empty[String, Array[Byte]]
-    def put(
-      key: String,
-      file: FPath,
-      contentType: String
-    ): IO[Unit] = IO.blocking(data.update(key, Files.readAllBytes(file.toNioPath)))
-    def get(
-      key: String
-    ): IO[Option[(BlobMeta, Stream[IO, Byte])]] =
+    def put(key: String, file: FPath, contentType: String): IO[Unit] =
+      IO.blocking(data.update(key, Files.readAllBytes(file.toNioPath)))
+    def get(key: String): IO[Option[(BlobMeta, Stream[IO, Byte])]] =
       IO(data.get(key).map(b => (BlobMeta("application/octet-stream", b.length.toLong), Stream.emits(b.toSeq))))
-    def delete(
-      key: String
-    ): IO[Unit] = IO(data.remove(key)).void
-    def copy(
-      from: String,
-      to: String
-    ): IO[Boolean] = IO(data.get(from).fold(false)(b => { data.update(to, b); true }))
+    def delete(key: String): IO[Unit] = IO(data.remove(key)).void
+    def copy(from: String, to: String): IO[Boolean] = IO(data.get(from).fold(false)(b => { data.update(to, b); true }))
   }
 
   private val ddl = List(
@@ -71,10 +61,8 @@ class MattermostImportSpec extends CatsEffectSuite {
     "create table emoji (id text, name text, creatorid text, createat bigint, deleteat bigint default 0)"
   )
 
-  private def run(
-    xa: Transactor[IO],
-    sqls: String*
-  ): IO[Unit] = sqls.toList.traverse_(s => Fragment.const(s).update.run.transact(xa))
+  private def run(xa: Transactor[IO], sqls: String*): IO[Unit] =
+    sqls.toList.traverse_(s => Fragment.const(s).update.run.transact(xa))
 
   test("ユーザー・チャンネル・DM・投稿・スレッド・メンション・リアクション・添付・絵文字を取り込み、やり直しても二重に作らない") {
     if cfg.isEmpty then IO(assume(false, "TEST_DATABASE_URL が未設定"))
@@ -83,9 +71,7 @@ class MattermostImportSpec extends CatsEffectSuite {
       val c = cfg.get
       val schema = s"mm_${UUID.randomUUID().toString.take(8)}"
       val r = UUID.randomUUID().toString.take(6)
-      def id(
-        s: String
-      ) = s"$s$r"
+      def id(s: String) = s"$s$r"
       val srcXa = Transactor.fromDriverManager[IO](
         "org.postgresql.Driver",
         c.url + (if c.url.contains("?") then "&" else "?") + s"currentSchema=$schema",
@@ -178,12 +164,8 @@ class MattermostImportSpec extends CatsEffectSuite {
         )
         maps <-
           sql"select kind, source_id, target_id from import_map where source = 'mattermost' and source_id like ${"%" + r}"
-            .query[(String, String, UUID)].to[List].transact(xa).map(_.map(
-              (
-                k,
-                s,
-                t
-              ) => (k, s.dropRight(r.length)) -> t
+            .query[(String, String, UUID)].to[List].transact(xa).map(_.map((k, s, t) =>
+              (k, s.dropRight(r.length)) -> t
             ).toMap)
         _ = assertEquals(maps(("user", "ua")), alice.id)
         // チャンネル（名前がぶつかったものはチーム名を付ける. 別のチームのものは取り込まない）

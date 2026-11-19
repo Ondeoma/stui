@@ -27,20 +27,12 @@ object LinkTitles {
   )
 
   // ID の大文字・小文字をそろえる（タスクIDは大文字、UUID は小文字）
-  private def norm(
-    provider: String,
-    id: String
-  ): String = if (provider == "skea") id.toUpperCase else id.toLowerCase
+  private def norm(provider: String, id: String): String = if (provider == "skea") id.toUpperCase else id.toLowerCase
 
-  private def escape(
-    s: String
-  ): String = s.replaceAll("""[.*+?^${}()|\[\]\\]""", """\\$0""")
+  private def escape(s: String): String = s.replaceAll("""[.*+?^${}()|\[\]\\]""", """\\$0""")
 
   /** 1つのサービスのリンクを見張る. 状態は data-{provider}（pending・ok・none・off）に持つ. */
-  private final class Watcher(
-    provider: String,
-    base: String,
-    path: String) {
+  private final class Watcher(provider: String, base: String, path: String) {
 
     private val re = js.RegExp("^" + escape(base) + path + "(?:[/?#]|$)")
     private val key = provider
@@ -48,10 +40,7 @@ object LinkTitles {
     private var timer: Option[SetTimeoutHandle] = None
     private val waiting = mutable.LinkedHashMap.empty[String, List[dom.HTMLAnchorElement]] // id -> リンク
 
-    private def apply(
-      a: dom.HTMLAnchorElement,
-      item: Option[js.Dynamic]
-    ): Unit = item match {
+    private def apply(a: dom.HTMLAnchorElement, item: Option[js.Dynamic]): Unit = item match {
       case None => a.dataset(key) = "none"
       case Some(it) =>
         a.dataset(key) = "ok"
@@ -71,23 +60,14 @@ object LinkTitles {
         }
     }
 
-    private def clear(
-      a: dom.Element
-    ): Unit = js.special.delete(a.asInstanceOf[dom.HTMLElement].dataset, key)
+    private def clear(a: dom.Element): Unit = js.special.delete(a.asInstanceOf[dom.HTMLElement].dataset, key)
 
-    private def schedule(
-      ms: Int
-    ): Unit = timer = Some(setTimeout(ms.toDouble)(flush()))
+    private def schedule(ms: Int): Unit = timer = Some(setTimeout(ms.toDouble)(flush()))
 
     private def flush(): Unit = {
       timer = None
       val batch = waiting.take(100).toList
-      batch.foreach(
-        (
-          id,
-          _
-        ) => waiting.remove(id)
-      )
+      batch.foreach((id, _) => waiting.remove(id))
       if (batch.nonEmpty) {
         val body = js.JSON.stringify(js.Dynamic.literal(ids = js.Array(batch.map(_._1)*)))
         dom.fetch(s"/api/integrations/$provider/titles", Api.init(dom.HttpMethod.POST, Some(body))).toFuture
@@ -96,30 +76,15 @@ object LinkTitles {
             val res = j.asInstanceOf[js.Dynamic]
             if (!js.DynamicImplicits.truthValue(res.connected)) {
               enabled = false
-              batch.foreach(
-                (
-                  _,
-                  as
-                ) => as.foreach(_.dataset(key) = "off")
-              )
+              batch.foreach((_, as) => as.foreach(_.dataset(key) = "off"))
             } else {
               val byId = res.items.asInstanceOf[js.Array[js.Dynamic]].map(p => norm(provider, p.id.toString) -> p).toMap
-              batch.foreach(
-                (
-                  id,
-                  as
-                ) => as.foreach(apply(_, byId.get(id)))
-              )
+              batch.foreach((id, as) => as.foreach(apply(_, byId.get(id))))
             }
           }
           // 問い合わせできなかったリンクは、次に描き直されたときにもう一度試す
           .recover { case _ =>
-            batch.foreach(
-              (
-                _,
-                as
-              ) => as.foreach(clear)
-            )
+            batch.foreach((_, as) => as.foreach(clear))
           }
           .foreach(_ => if (waiting.nonEmpty) schedule(50))
       }
@@ -140,12 +105,7 @@ object LinkTitles {
     }
 
     private var queued = false
-    new dom.MutationObserver(
-      (
-        _,
-        _
-      ) => if (!queued) { queued = true; setTimeout(30)({ queued = false; scan() }) }
-    )
+    new dom.MutationObserver((_, _) => if (!queued) { queued = true; setTimeout(30)({ queued = false; scan() }) })
       .observe(dom.document.body, new dom.MutationObserverInit { childList = true; subtree = true })
     scan()
 
@@ -158,9 +118,7 @@ object LinkTitles {
 
   private var watchers = Map.empty[String, Watcher]
 
-  def start(
-    svc: LinkServiceDto
-  ): Unit = if (svc.connected) watchers.get(svc.provider) match {
+  def start(svc: LinkServiceDto): Unit = if (svc.connected) watchers.get(svc.provider) match {
     case Some(w) => w.reset()
     case None => paths.get(svc.provider).foreach(p => watchers += svc.provider -> new Watcher(svc.provider, svc.url, p))
   }

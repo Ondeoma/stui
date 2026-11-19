@@ -16,22 +16,19 @@ import java.util.UUID
  * チャットの操作（REST・MCP・Webhook・連携サービス・定期メッセージで共通）。
  * 権限の確認・投稿・変更履歴（画面の同期）・通知・送信の Webhook まで行う。
  */
-final class ChatService(
-  channels: ChannelStore,
-  messages: MessageStore,
-  users: UserStore,
-  val access: Access2,
-  notifier: NotifyService,
-  hooks: HookStore,
-  activity: ActivityStore,
-  cfg: ApiConfig) {
+final class ChatService(channels: ChannelStore,
+                        messages: MessageStore,
+                        users: UserStore,
+                        val access: Access2,
+                        notifier: NotifyService,
+                        hooks: HookStore,
+                        activity: ActivityStore,
+                        cfg: ApiConfig) {
 
   private val MaxText = 40000
 
   /** 投稿の本文（Tiptap の文書、または Markdown の文字列）を読む。 */
-  def parseBody(
-    j: Json
-  ): Either[AppError, Json] =
+  def parseBody(j: Json): Either[AppError, Json] =
     j.asString match {
       case Some(md) if md.length > MaxText => Left(AppError(ErrorCode.MessageTooLong, s"本文は${MaxText}文字までです"))
       case Some(md) => Right(RichText.fromMarkdown(md))
@@ -39,21 +36,13 @@ final class ChatService(
       case None => Left(AppError(ErrorCode.MessageBodyFormatInvalid))
     }
 
-  def link(
-    channelId: UUID,
-    messageId: UUID,
-    rootId: Option[UUID]
-  ): String =
+  def link(channelId: UUID, messageId: UUID, rootId: Option[UUID]): String =
     Paths.message(channelId, Some(messageId), rootId)
 
   // ---------------------------------------------------------------- 投稿
 
   /** 人（またはAPIキー）としての投稿。 */
-  def post(
-    s: AuthSession,
-    channelId: UUID,
-    r: PostMessageReq
-  ): Res[MessageDto] =
+  def post(s: AuthSession, channelId: UUID, r: PostMessageReq): Res[MessageDto] =
     sbirds.observe.Telemetry.span(
       "chat.post",
       "channel.id" -> channelId.toString,
@@ -66,11 +55,7 @@ final class ChatService(
       ))
     )
 
-  private def postImpl(
-    s: AuthSession,
-    channelId: UUID,
-    r: PostMessageReq
-  ): Res[MessageDto] =
+  private def postImpl(s: AuthSession, channelId: UUID, r: PostMessageReq): Res[MessageDto] =
     access.channel(s, channelId, Need.Post).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) =>
@@ -91,16 +76,14 @@ final class ChatService(
     }
 
   /** チャンネルへの投稿の本体（権限の確認は済ませておくこと）。ボットの投稿もここを通す。 */
-  def publish(
-    c: ChannelRow,
-    author: Author,
-    doc: Json,
-    rootId: Option[UUID],
-    alsoChannel: Boolean,
-    props: Json,
-    kind: String,
-    attachmentIds: List[UUID] = Nil
-  ): Res[MessageDto] = {
+  def publish(c: ChannelRow,
+              author: Author,
+              doc: Json,
+              rootId: Option[UUID],
+              alsoChannel: Boolean,
+              props: Json,
+              kind: String,
+              attachmentIds: List[UUID] = Nil): Res[MessageDto] = {
     val text = RichText.toPlain(doc)
     if RichText.isBlank(doc) && attachmentIds.isEmpty then IO.pure(Left(AppError(ErrorCode.MessageTextRequired)))
     else if attachmentIds.size > 20 then IO.pure(Left(AppError(ErrorCode.MessageTooManyAttachments)))
@@ -135,12 +118,7 @@ final class ChatService(
   }
 
   /** 参加・退出などの知らせ（system）。 */
-  def system(
-    c: ChannelRow,
-    actor: User,
-    text: String,
-    props: Json = Json.obj()
-  ): IO[Unit] =
+  def system(c: ChannelRow, actor: User, text: String, props: Json = Json.obj()): IO[Unit] =
     messages.insert(NewMessage(
       c.id,
       None,
@@ -154,13 +132,7 @@ final class ChatService(
     )).void
 
   /** 投稿の後: 通知・送信の Webhook。 */
-  private def fanout(
-    c: ChannelRow,
-    author: Author,
-    m: MessageRow,
-    doc: Json,
-    text: String
-  ): IO[Unit] =
+  private def fanout(c: ChannelRow, author: Author, m: MessageRow, doc: Json, text: String): IO[Unit] =
     for {
       rs <- channels.recipientsIO(c.id)
       members = rs.filterNot(r => r.isBot || r.userId == author.user.id)
@@ -247,19 +219,15 @@ final class ChatService(
       _ <- IO.whenA(m.kind != "bot")(webhook(c, EventKind.MessageCreated, Some(m), Some(author.user), Some(text)))
     } yield ()
 
-  private def place(
-    c: ChannelRow
-  ): String = if c.isDm then "DM" else s"#${c.name}"
+  private def place(c: ChannelRow): String = if c.isDm then "DM" else s"#${c.name}"
 
   /** 送信の Webhook に積む。 */
-  def webhook(
-    c: ChannelRow,
-    event: String,
-    m: Option[MessageRow],
-    actor: Option[User],
-    text: Option[String],
-    extra: Json = Json.obj()
-  ): IO[Unit] = {
+  def webhook(c: ChannelRow,
+              event: String,
+              m: Option[MessageRow],
+              actor: Option[User],
+              text: Option[String],
+              extra: Json = Json.obj()): IO[Unit] = {
     val payload = Json.obj(
       "event" -> event.asJson,
       "channel" -> Json.obj("id" -> c.id.asJson, "name" -> c.name.asJson, "kind" -> c.kind.asJson),
@@ -283,11 +251,7 @@ final class ChatService(
 
   // ---------------------------------------------------------------- 編集・削除・リアクション・ピン留め
 
-  def edit(
-    s: AuthSession,
-    id: UUID,
-    body: Json
-  ): Res[MessageDto] =
+  def edit(s: AuthSession, id: UUID, body: Json): Res[MessageDto] =
     access.message(s, id, Need.Post).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right((_, m)) if !m.authorId.contains(s.user.id) => IO.pure(Left(AppError(ErrorCode.MessageEditNotOwner)))
@@ -306,10 +270,7 @@ final class ChatService(
         }
     }
 
-  def delete(
-    s: AuthSession,
-    id: UUID
-  ): Res[Unit] =
+  def delete(s: AuthSession, id: UUID): Res[Unit] =
     access.message(s, id, Need.Read).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right((ctx, m)) =>
@@ -329,12 +290,7 @@ final class ChatService(
               .as(Right(()))
     }
 
-  def react(
-    s: AuthSession,
-    id: UUID,
-    emoji: String,
-    on: Boolean
-  ): Res[List[ReactionDto]] =
+  def react(s: AuthSession, id: UUID, emoji: String, on: Boolean): Res[List[ReactionDto]] =
     if on && !Reactions.valid(emoji) then IO.pure(Left(AppError(ErrorCode.ReactionEmojiInvalid)))
     else
       access.message(s, id, Need.Member).flatMap {
@@ -355,11 +311,7 @@ final class ChatService(
             messages.reactions(id).map(Right(_))
       }
 
-  def pin(
-    s: AuthSession,
-    id: UUID,
-    on: Boolean
-  ): Res[Unit] =
+  def pin(s: AuthSession, id: UUID, on: Boolean): Res[Unit] =
     access.message(s, id, Need.Member).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(_) if !s.canWrite => IO.pure(Left(AppError(ErrorCode.ApiKeyReadOnly)))
@@ -379,10 +331,7 @@ final class ChatService(
 
   // ---------------------------------------------------------------- チャンネル
 
-  def createChannel(
-    s: AuthSession,
-    r: CreateChannelReq
-  ): Res[ChannelDto] =
+  def createChannel(s: AuthSession, r: CreateChannelReq): Res[ChannelDto] =
     ChannelName.normalize(r.name) match {
       case Left(m) => IO.pure(Left(AppError(ErrorCode.ChannelNameInvalid, m)))
       case Right(_) if !Set(ChannelKind.Public, ChannelKind.Private).contains(r.kind) =>
@@ -414,11 +363,7 @@ final class ChatService(
           }
     }
 
-  def updateChannel(
-    s: AuthSession,
-    id: UUID,
-    r: UpdateChannelReq
-  ): Res[ChannelDto] =
+  def updateChannel(s: AuthSession, id: UUID, r: UpdateChannelReq): Res[ChannelDto] =
     access.channel(s, id, Need.Read).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) =>
@@ -461,10 +406,7 @@ final class ChatService(
         }
     }
 
-  def join(
-    s: AuthSession,
-    id: UUID
-  ): Res[ChannelDto] =
+  def join(s: AuthSession, id: UUID): Res[ChannelDto] =
     access.channel(s, id, Need.Read).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) if ctx.isMember => channels.get(id, s.user.id).map(v => Right(v.get))
@@ -475,11 +417,7 @@ final class ChatService(
           channels.get(id, s.user.id).map(v => Right(v.get))
     }
 
-  def addMembers(
-    s: AuthSession,
-    id: UUID,
-    userIds: List[UUID]
-  ): Res[List[UUID]] =
+  def addMembers(s: AuthSession, id: UUID, userIds: List[UUID]): Res[List[UUID]] =
     access.channel(s, id, Need.Member).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) if ctx.channel.isDm => IO.pure(Left(AppError(ErrorCode.DmAddMemberNotAllowed)))
@@ -490,18 +428,10 @@ final class ChatService(
     }
 
   /** 権限を確かめた後に、メンバーを追加して知らせる（管理画面からエージェント専用アカウントを参加させるときも使う）。 */
-  def addMembersTo(
-    c: ChannelRow,
-    actor: User,
-    userIds: List[UUID]
-  ): IO[List[UUID]] =
+  def addMembersTo(c: ChannelRow, actor: User, userIds: List[UUID]): IO[List[UUID]] =
     channels.addMembers(c.id, userIds, Some(actor.id)).flatTap(added => memberJoined(c, actor, added))
 
-  private def memberJoined(
-    c: ChannelRow,
-    actor: User,
-    added: List[UUID]
-  ): IO[Unit] =
+  private def memberJoined(c: ChannelRow, actor: User, added: List[UUID]): IO[Unit] =
     IO.whenA(added.nonEmpty)(
       users.briefsIO(added).flatMap { bs =>
         val names = bs.map(_.name).mkString("、")
@@ -513,11 +443,7 @@ final class ChatService(
       }
     )
 
-  def removeMember(
-    s: AuthSession,
-    id: UUID,
-    userId: UUID
-  ): Res[Unit] =
+  def removeMember(s: AuthSession, id: UUID, userId: UUID): Res[Unit] =
     access.channel(s, id, Need.Member).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) if ctx.channel.isDm => IO.pure(Left(AppError(ErrorCode.DmLeaveNotAllowed)))
@@ -527,11 +453,7 @@ final class ChatService(
     }
 
   /** 権限を確かめた後に、メンバーを外して知らせる（管理画面からエージェント専用アカウントを外すときも使う）。 */
-  def removeMemberFrom(
-    c: ChannelRow,
-    actor: User,
-    userId: UUID
-  ): Res[Unit] =
+  def removeMemberFrom(c: ChannelRow, actor: User, userId: UUID): Res[Unit] =
     channels.removeMember(c.id, userId).flatMap {
       case false => IO.pure(Left(AppError(ErrorCode.NotChannelMember)))
       case true =>
@@ -548,10 +470,7 @@ final class ChatService(
     }
 
   /** DM を開く（自分と相手。相手が空なら自分だけの DM）。 */
-  def openDm(
-    s: AuthSession,
-    userIds: List[UUID]
-  ): Res[ChannelDto] = {
+  def openDm(s: AuthSession, userIds: List[UUID]): Res[ChannelDto] = {
     val others = userIds.distinct.filterNot(_ == s.user.id)
     if others.size > 8 then IO.pure(Left(AppError(ErrorCode.GroupDmTooManyMembers)))
     else

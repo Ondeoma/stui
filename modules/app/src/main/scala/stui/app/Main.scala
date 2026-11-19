@@ -23,17 +23,16 @@ import sbirds.storage.{S3BlobStore, S3Config}
 
 import scala.concurrent.duration.*
 
-final case class AppConfig(
-  port: Int,
-  db: DbConfig,
-  oidc: Option[OidcConfig],
-  api: ApiConfig,
-  staticDir: Option[String],
-  s3: Option[S3Config],
-  smtp: Option[SmtpConfig],
-  appSecret: String,
-  nodeId: String,
-  mailDelaySeconds: Int)
+final case class AppConfig(port: Int,
+                           db: DbConfig,
+                           oidc: Option[OidcConfig],
+                           api: ApiConfig,
+                           staticDir: Option[String],
+                           s3: Option[S3Config],
+                           smtp: Option[SmtpConfig],
+                           appSecret: String,
+                           nodeId: String,
+                           mailDelaySeconds: Int)
 
 object Main extends IOApp.Simple {
 
@@ -136,10 +135,7 @@ object Main extends IOApp.Simple {
     } yield ()
 
   /** DB（Patroni のプライマリ）が使えるまで待ってからマイグレーションする。複数ノード同時起動でも Flyway のロックで1回だけ適用される。 */
-  private def migrateWithRetry(
-    cfg: AppConfig,
-    attempt: Int = 1
-  ): IO[Int] =
+  private def migrateWithRetry(cfg: AppConfig, attempt: Int = 1): IO[Int] =
     Database.migrate(cfg.db).handleErrorWith { e =>
       if attempt >= 60 then IO.raiseError(e)
       else
@@ -148,12 +144,8 @@ object Main extends IOApp.Simple {
     }
 
   /** DB から定期的に読むメトリクス（skorimako のダッシュボード・アラート用）。 */
-  private def gauges(
-    xa: doobie.Transactor[IO]
-  ): Resource[IO, Unit] = {
-    def q(
-      sqlText: doobie.Fragment
-    ): IO[Long] = sqlText.query[Long].unique.transact(xa)
+  private def gauges(xa: doobie.Transactor[IO]): Resource[IO, Unit] = {
+    def q(sqlText: doobie.Fragment): IO[Long] = sqlText.query[Long].unique.transact(xa)
     List(
       Metrics.gauge(
         "stui.users.total",
@@ -184,10 +176,7 @@ object Main extends IOApp.Simple {
   }
 
   /** ロードバランサー用のヘルスチェック。DB（プライマリ）に書けない状態なら 503。 */
-  private def healthRoutes(
-    xa: doobie.Transactor[IO],
-    node: String
-  ): HttpRoutes[IO] = HttpRoutes.of[IO] {
+  private def healthRoutes(xa: doobie.Transactor[IO], node: String): HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "healthz" =>
       sql"select not pg_is_in_recovery()".query[Boolean].unique.transact(xa).timeout(3.seconds).attempt.flatMap {
         case Right(true) => text(Status.Ok, s"ok $node")
@@ -196,50 +185,34 @@ object Main extends IOApp.Simple {
       }
   }
 
-  private def text(
-    status: Status,
-    body: String
-  ): IO[Response[IO]] =
+  private def text(status: Status, body: String): IO[Response[IO]] =
     IO.pure(Response[IO](status).withEntity(body)(using EntityEncoder.stringEncoder))
 
-  private def blobStore(
-    cfg: AppConfig
-  ): Resource[IO, Option[sbirds.storage.BlobStore]] = cfg.s3 match {
+  private def blobStore(cfg: AppConfig): Resource[IO, Option[sbirds.storage.BlobStore]] = cfg.s3 match {
     case Some(c) => S3BlobStore.resource(c).evalTap(_.ensureBucket).map(Some(_))
     case None => Resource.eval(sbirds.observe.Log.println("[stui] WARNING: S3_ENDPOINT が未設定のため、添付ファイルは使えません").as(None))
   }
 
-  private def startupNotes(
-    cfg: AppConfig
-  ): IO[Unit] =
+  private def startupNotes(cfg: AppConfig): IO[Unit] =
     IO.whenA(cfg.smtp.isEmpty)(sbirds.observe.Log.println("[stui] WARNING: SMTP_HOST が未設定のため、メールは送りません")) *>
       IO.whenA(
         cfg.oidc.isEmpty
       )(sbirds.observe.Log.println("[stui] WARNING: OIDC が未設定です。開発用のログイン（DEV_LOGIN）を使います。本番では使わないでください"))
 
   /** 期限切れのセッション・古い通知・変更履歴・監査ログ・投稿されなかった添付を消す（1ノードだけ）。 */
-  private def purgeLoop(
-    users: UserStore,
-    activity: ActivityStore,
-    messages: MessageStore,
-    blobs: Option[sbirds.storage.BlobStore],
-    lock: JobLock
-  ): IO[Unit] =
+  private def purgeLoop(users: UserStore,
+                        activity: ActivityStore,
+                        messages: MessageStore,
+                        blobs: Option[sbirds.storage.BlobStore],
+                        lock: JobLock): IO[Unit] =
     Periodic.run(10.minutes, 1.hour, ErrorCode.PurgeFailed)(lock.exclusive("purge", 50.minutes)(
       IO.realTimeInstant.flatMap(users.purgeExpired) *> activity.purgeOld(180).void *> messages.purgeEvents(14).void *>
         activity.purgeAudit(730).void *>
-        messages.orphanAttachments.flatMap(_.traverse_(
-          (
-            _,
-            key
-          ) => blobs.traverse_(_.delete(key).handleError(_ => ()))
-        ))
+        messages.orphanAttachments.flatMap(_.traverse_((_, key) => blobs.traverse_(_.delete(key).handleError(_ => ()))))
     ))
 
   /** ビルド済みの画面の配信。存在しないパスは index.html（SPA）。 */
-  private def spa(
-    dir: String
-  ): HttpRoutes[IO] = {
+  private def spa(dir: String): HttpRoutes[IO] = {
     val files = fileService[IO](FileService.Config(dir))
     val index = HttpRoutes.of[IO] {
       case req @ GET -> _

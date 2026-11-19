@@ -5,9 +5,7 @@ import munit.CatsEffectSuite
 /** 送信の Webhook の宛先の確認（SSRF を防ぐ）。publicHost は設定だけを使うので、ほかの依存は渡さない。 */
 class WebhookSpec extends CatsEffectSuite {
 
-  private def svc(
-    allowPrivate: Boolean
-  ) =
+  private def svc(allowPrivate: Boolean) =
     new WebhookService(
       null,
       null,

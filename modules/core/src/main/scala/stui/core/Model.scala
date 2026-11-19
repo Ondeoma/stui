@@ -3,9 +3,7 @@ package stui.core
 import java.util.UUID
 
 /** UUID として読めれば Some（読めなければ None）。 */
-def uuidOpt(
-  s: String
-): Option[UUID] = scala.util.Try(UUID.fromString(s.trim)).toOption
+def uuidOpt(s: String): Option[UUID] = scala.util.Try(UUID.fromString(s.trim)).toOption
 
 /** APIキーのスコープ。 */
 enum Scope {
@@ -13,17 +11,13 @@ enum Scope {
 }
 
 object Scope {
-  def parse(
-    s: String
-  ): Option[Scope] = s.trim.toLowerCase match {
+  def parse(s: String): Option[Scope] = s.trim.toLowerCase match {
     case "read" => Some(Read)
     case "write" => Some(Write)
     case "admin" => Some(Admin)
     case _ => None
   }
-  extension (
-    s: Scope
-  ) {
+  extension (s: Scope) {
     def asString: String = s match {
       case Read => "read"
       case Write => "write"
@@ -32,19 +26,16 @@ object Scope {
   }
 }
 
-final case class User(
-  id: UUID,
-  sub: String,
-  name: String,
-  email: Option[String],
-  avatarUrl: Option[String],
-  isAdmin: Boolean,
-  disabled: Boolean,
-  timezone: String,
-  isBot: Boolean = false)
-final case class Group(
-  id: UUID,
-  name: String)
+final case class User(id: UUID,
+                      sub: String,
+                      name: String,
+                      email: Option[String],
+                      avatarUrl: Option[String],
+                      isAdmin: Boolean,
+                      disabled: Boolean,
+                      timezone: String,
+                      isBot: Boolean = false)
+final case class Group(id: UUID, name: String)
 
 /**
  * エージェント専用アカウント（skakapo などの外部の AI エージェントが API キーで使う。ログインはできない）。
@@ -55,20 +46,14 @@ object AgentAccounts {
 
   /** SQL の like で使う形。 */
   val SubLike = SubPrefix + "%"
-  def isAgent(
-    sub: String
-  ): Boolean = sub.startsWith(SubPrefix)
+  def isAgent(sub: String): Boolean = sub.startsWith(SubPrefix)
   def newSub(): String = SubPrefix + UUID.randomUUID()
 
   /** ログインで使えない sub（ボット・エージェント）。 */
-  def reservedSub(
-    sub: String
-  ): Boolean = sub.startsWith("bot:")
+  def reservedSub(sub: String): Boolean = sub.startsWith("bot:")
 
   /** 名前の確認（前後の空白を除いて 1〜60 文字、制御文字なし）。正しければ整えた名前。 */
-  def validName(
-    name: String
-  ): Either[String, String] = {
+  def validName(name: String): Either[String, String] = {
     val n = name.trim
     if n.isEmpty then Left("名前を入力してください")
     else if n.length > 60 then Left("名前は 60 文字以内にしてください")
@@ -94,11 +79,7 @@ enum AuthVia {
 }
 
 /** 認証済みの利用者。isAdmin はシステム管理者（ADMIN_GROUPS の所属、または画面で管理者にしたユーザー）。 */
-final case class AuthSession(
-  user: User,
-  groups: List[Group],
-  isAdmin: Boolean,
-  via: AuthVia = AuthVia.Session) {
+final case class AuthSession(user: User, groups: List[Group], isAdmin: Boolean, via: AuthVia = AuthVia.Session) {
 
   /** 更新系の操作ができるか（read スコープだけのキーは不可）。 */
   def canWrite: Boolean = via match {
@@ -137,9 +118,7 @@ final case class AuthSession(
 
 /** チャンネルの名前。前後の空白を除き、80文字まで。# は付けない。改行・制御文字は不可。 */
 object ChannelName {
-  def normalize(
-    s: String
-  ): Either[String, String] = {
+  def normalize(s: String): Either[String, String] = {
     val t = s.trim.stripPrefix("#").trim
     if t.isEmpty then Left("チャンネルの名前を入力してください")
     else if t.length > 80 then Left("チャンネルの名前は80文字までにしてください")
@@ -150,7 +129,5 @@ object ChannelName {
 
 /** DM の参加者を表すキー（同じ顔ぶれの DM は1つにする）。 */
 object DmKey {
-  def of(
-    users: Iterable[UUID]
-  ): String = users.toList.distinct.map(_.toString).sorted.mkString(",")
+  def of(users: Iterable[UUID]): String = users.toList.distinct.map(_.toString).sorted.mkString(",")
 }

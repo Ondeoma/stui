@@ -9,21 +9,18 @@ import stui.db.*
 import stui.shared.*
 
 /** 検索（メッセージ・チャンネル・人・ファイル）。 */
-final class SearchRoutes(
-  search: SearchStore,
-  channels: ChannelStore,
-  users: UserStore,
-  val sessions: SessionAuth,
-  val access: Access2)
+final class SearchRoutes(search: SearchStore,
+                         channels: ChannelStore,
+                         users: UserStore,
+                         val sessions: SessionAuth,
+                         val access: Access2)
   extends RouteSupport {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case req @ GET -> Root / "api" / "search" => getSearch(req)
   }
 
-  private def getSearch(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getSearch(req: Request[IO]): IO[Response[IO]] =
     authed(req) { s =>
       val q = param(req, "q").getOrElse("")
       val limit = intParam(req, "limit", 50, 200)

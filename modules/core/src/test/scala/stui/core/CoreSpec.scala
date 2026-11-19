@@ -79,11 +79,7 @@ class CoreSpec extends munit.FunSuite {
     val z = ZoneId.of("Asia/Tokyo")
     val t = LocalTime.of(9, 0)
     val after = LocalDate.of(2026, 11, 14).atTime(10, 0).atZone(z).toInstant // 土曜 10:00
-    def at(
-      y: Int,
-      m: Int,
-      d: Int
-    ) = Some(LocalDate.of(y, m, d).atTime(t).atZone(z).toInstant)
+    def at(y: Int, m: Int, d: Int) = Some(LocalDate.of(y, m, d).atTime(t).atZone(z).toInstant)
     assertEquals(Recurrence.next("daily", None, t, None, None, z, after), at(2026, 11, 15))
     assertEquals(Recurrence.next("weekdays", None, t, None, None, z, after), at(2026, 11, 16))
     assertEquals(Recurrence.next("weekly", None, t, Some(3), None, z, after), at(2026, 11, 18))
@@ -123,9 +119,7 @@ class CoreSpec extends munit.FunSuite {
   }
 
   test("RichText: Markdown のバックスラッシュエスケープ") {
-    def html(
-      md: String
-    ) = RichText.toHtml(RichText.fromMarkdown(md))
+    def html(md: String) = RichText.toHtml(RichText.fromMarkdown(md))
     assertEquals(
       html("\\#general a\\*b\\* \\_x\\_ \\[l\\](u) \\<y\\> \\!\\|\\~\\~z\\~\\~ \\\\"),
       "<p>#general a*b* _x_ [l](u) &lt;y&gt; !|~~z~~ \\</p>"
@@ -163,10 +157,7 @@ class CoreSpec extends munit.FunSuite {
 
   test("RichText: 深すぎる入れ子・危ない URL を受け付けない") {
     val deep = (1 to 100).foldLeft(Json.obj("type" -> Json.fromString("text"), "text" -> Json.fromString("x")))(
-      (
-        n,
-        _
-      ) =>
+      (n, _) =>
         Json.obj("type" -> Json.fromString("blockquote"), "content" -> Json.arr(n))
     )
     assert(!RichText.valid(Json.obj("type" -> Json.fromString("doc"), "content" -> Json.arr(deep))))

@@ -16,40 +16,26 @@ import scala.scalajs.js.annotation.JSGlobal
 @js.native
 @JSGlobal("stuiEditor")
 private object EditorFacade extends js.Object {
-  def create(
-    area: dom.Element,
-    opts: js.Object
-  ): EditorJs = js.native
+  def create(area: dom.Element, opts: js.Object): EditorJs = js.native
 }
 
 /** 画面から使うエディタの操作. */
-final class EditorHandle private[web] (
-  ed: EditorJs,
-  el: dom.Element,
-  fileInput: dom.HTMLInputElement) {
+final class EditorHandle private[web] (ed: EditorJs, el: dom.Element, fileInput: dom.HTMLInputElement) {
   def getJSON(): js.Any = ed.getJSON()
-  def setJSON(
-    j: js.Any
-  ): Unit = ed.setJSON(j)
+  def setJSON(j: js.Any): Unit = ed.setJSON(j)
   def isEmpty(): Boolean = ed.isEmpty()
   def clear(): Unit = ed.clear()
   def focus(): Unit = ed.focus()
-  def insertText(
-    t: String
-  ): Unit = ed.insertText(t)
+  def insertText(t: String): Unit = ed.insertText(t)
   def pickFile(): Unit = fileInput.click()
   def destroy(): Unit = { ed.destroy(); el.innerHTML = ""; el.classList.remove("sk-editor") }
 }
 
 object Editor {
 
-  def toJs(
-    j: Json
-  ): js.Any = js.JSON.parse(j.noSpaces)
+  def toJs(j: Json): js.Any = js.JSON.parse(j.noSpaces)
 
-  def fromJs(
-    a: js.Any
-  ): Json = parse(js.JSON.stringify(a)).getOrElse(Json.Null)
+  def fromJs(a: js.Any): Json = parse(js.JSON.stringify(a)).getOrElse(Json.Null)
 
   /** セルの背景色（色名を data-bg に保存し、実際の色は CSS で決める. ダークモード対応）. */
   val cellColors: List[(String, String)] = List(
@@ -67,36 +53,18 @@ object Editor {
   private type Steps = js.Array[js.Array[js.Any]]
 
   /** Tiptap の chain のコマンド（名前と引数）を続けて行う手順. */
-  private def steps(
-    cmds: (String, Seq[js.Any])*
-  ): Steps = cmds.map(
-    (
-      n,
-      a
-    ) => js.Array[js.Any]((n: js.Any) +: a*)
-  ).toJSArray
-  private def cmd(
-    name: String,
-    args: js.Any*
-  ): Steps = steps(name -> args)
+  private def steps(cmds: (String, Seq[js.Any])*): Steps =
+    cmds.map((n, a) => js.Array[js.Any]((n: js.Any) +: a*)).toJSArray
+  private def cmd(name: String, args: js.Any*): Steps = steps(name -> args)
 
-  private def el[A <: dom.HTMLElement](
-    tag: String,
-    cls: String = ""
-  ): A = {
+  private def el[A <: dom.HTMLElement](tag: String, cls: String = ""): A = {
     val e = dom.document.createElement(tag).asInstanceOf[A]
     if (cls.nonEmpty) e.className = cls
     e
   }
 
   /** ツールバーのボタン（押してもエディタのフォーカスを外さない）. */
-  private def button(
-    cls: String,
-    html: String,
-    title: String
-  )(
-    f: => Unit
-  ): dom.HTMLButtonElement = {
+  private def button(cls: String, html: String, title: String)(f: => Unit): dom.HTMLButtonElement = {
     val b = el[dom.HTMLButtonElement]("button", cls)
     b.`type` = "button"
     b.innerHTML = html
@@ -107,32 +75,20 @@ object Editor {
   }
 
   // scalajs-dom の HTMLElement に hidden が無いため
-  private def setHidden(
-    e: dom.HTMLElement,
-    v: Boolean
-  ): Unit = e.asInstanceOf[js.Dynamic].hidden = v
+  private def setHidden(e: dom.HTMLElement, v: Boolean): Unit = e.asInstanceOf[js.Dynamic].hidden = v
 
   private def sep(): dom.HTMLElement = el("span", "sk-sep")
 
   private val table33 = js.Dynamic.literal(rows = 3, cols = 3, withHeaderRow = true)
-  private def level(
-    n: Int
-  ) = js.Dynamic.literal(level = n)
+  private def level(n: Int) = js.Dynamic.literal(level = n)
 
   /** ツールバーのボタン（表示, 説明, 押したとき, 押されている状態の判定（型と属性））. None は区切り. */
-  private final case class Tool(
-    label: String,
-    title: String,
-    run: EditorJs => Unit,
-    active: Option[(String, js.Any)] = None)
+  private final case class Tool(label: String,
+                                title: String,
+                                run: EditorJs => Unit,
+                                active: Option[(String, js.Any)] = None)
 
-  private def toggle(
-    label: String,
-    title: String,
-    command: String,
-    tpe: String,
-    args: js.Any*
-  ): Tool =
+  private def toggle(label: String, title: String, command: String, tpe: String, args: js.Any*): Tool =
     Tool(label, title, _.run(cmd(command, args*)), Some(tpe -> args.headOption.getOrElse(js.undefined)))
 
   private val tools: List[Option[Tool]] = List(
@@ -154,21 +110,15 @@ object Editor {
   )
 
   /** 「/」で開くブロックの挿入メニュー. ed は作り終えたエディタ（選んだときに使う）. */
-  private def slashItems(
-    ed: () => EditorJs,
-    upload: Boolean,
-    mentions: Boolean,
-    pickFile: () => Unit
-  ): List[js.Dynamic] = {
-    def item(
-      icon: String,
-      label: String,
-      hint: String,
-      keys: String,
-      iconClass: String = ""
-    )(
-      run: js.Any => Unit
-    ): js.Dynamic =
+  private def slashItems(ed: () => EditorJs,
+                         upload: Boolean,
+                         mentions: Boolean,
+                         pickFile: () => Unit): List[js.Dynamic] = {
+    def item(icon: String,
+             label: String,
+             hint: String,
+             keys: String,
+             iconClass: String = "")(run: js.Any => Unit): js.Dynamic =
       js.Dynamic.literal(
         icon = icon,
         iconClass = iconClass,
@@ -178,19 +128,9 @@ object Editor {
         run = (run: js.Function1[js.Any, Unit])
       )
     // 文字のある行で選んだときは、その行を変えずに次の行に入れる（editor.js の block）
-    def block(
-      icon: String,
-      label: String,
-      hint: String,
-      keys: String
-    )(
-      command: String,
-      args: js.Any*
-    ): js.Dynamic =
+    def block(icon: String, label: String, hint: String, keys: String)(command: String, args: js.Any*): js.Dynamic =
       item(icon, label, hint, keys)(range => ed().block(range, cmd(command, args*)))
-    def deleteRange(
-      range: js.Any
-    ): Unit = ed().run(cmd("deleteRange", range))
+    def deleteRange(range: js.Any): Unit = ed().run(cmd("deleteRange", range))
     List(
       block("H2", "見出し", "大きな見出し", "heading h2 midashi みだし")("setNode", "heading", level(2)),
       block("H3", "小見出し", "小さな見出し", "heading h3 komidashi こみだし")("setNode", "heading", level(3)),
@@ -211,38 +151,19 @@ object Editor {
   }
 
   /** 選んでいるものに応じたツールバー（画像の寄せ方向・大きさ、表のセルの色・行と列）. */
-  private def contextBar(
-    ed: EditorJs,
-    bar: dom.HTMLElement
-  ): () => Unit = {
-    def btn(
-      label: String,
-      title: String,
-      active: Boolean = false
-    )(
-      f: => Unit
-    ) = button("sk-tb" + (if (active) " active" else ""), label, title)(f)
-    def label(
-      t: String
-    ) = { val s = el[dom.HTMLElement]("span", "sk-ctx-label"); s.textContent = t; s }
-    def run(
-      command: String,
-      args: js.Any*
-    ): Unit = ed.run(cmd(command, args*))
-    def str(
-      v: js.Dynamic
-    ): Option[String] = Option(v).filterNot(js.isUndefined).map(_.toString)
+  private def contextBar(ed: EditorJs, bar: dom.HTMLElement): () => Unit = {
+    def btn(label: String, title: String, active: Boolean = false)(f: => Unit) =
+      button("sk-tb" + (if (active) " active" else ""), label, title)(f)
+    def label(t: String) = { val s = el[dom.HTMLElement]("span", "sk-ctx-label"); s.textContent = t; s }
+    def run(command: String, args: js.Any*): Unit = ed.run(cmd(command, args*))
+    def str(v: js.Dynamic): Option[String] = Option(v).filterNot(js.isUndefined).map(_.toString)
     () => {
       bar.innerHTML = ""
       if (!ed.isEditable()) setHidden(bar, true)
       else if (ed.isActive("image", js.undefined)) {
         val align = str(ed.attrs("image").align)
-        def setAlign(
-          v: js.Any
-        ): Unit = run("updateAttributes", "image", js.Dynamic.literal(align = v))
-        def width(
-          ratio: Option[Double]
-        ): Unit = {
+        def setAlign(v: js.Any): Unit = run("updateAttributes", "image", js.Dynamic.literal(align = v))
+        def width(ratio: Option[Double]): Unit = {
           val area = Some(ed.width()).filter(_ > 0).getOrElse(600d)
           run(
             "updateAttributes",
@@ -270,15 +191,10 @@ object Editor {
         setHidden(bar, false)
       } else if (ed.isActive("table", js.undefined)) {
         val cur = str(ed.attrs("tableCell").backgroundColor).orElse(str(ed.attrs("tableHeader").backgroundColor))
-        def color(
-          id: js.Any
-        ): Unit = run("setCellAttribute", "backgroundColor", id)
+        def color(id: js.Any): Unit = run("setCellAttribute", "backgroundColor", id)
         (List(label("セルの色"), btn("<span class=\"sk-swatch none\"></span>", "なし", cur.isEmpty)(color(null))) ++
-          cellColors.map(
-            (
-              id,
-              name
-            ) => btn(s"""<span class="sk-swatch" data-bg="$id"></span>""", name, cur.contains(id))(color(id))
+          cellColors.map((id, name) =>
+            btn(s"""<span class="sk-swatch" data-bg="$id"></span>""", name, cur.contains(id))(color(id))
           ) ++
           List(
             sep(),
@@ -304,19 +220,17 @@ object Editor {
    * エディタを作る. channelId を渡すと @メンションの候補をそのチャンネルのメンバーから出す.
    * upload を渡すと、画像・ファイルの貼り付けでそれを呼ぶ（Some を返すと本文に埋め込む. None なら埋め込まない）.
    */
-  def create(
-    el: dom.Element,
-    content: Option[Json],
-    placeholder: String,
-    channelId: Option[UUID],
-    onSubmit: () => Unit,
-    autofocus: Boolean = false,
-    onChange: Json => Unit = _ => (),
-    enterSubmit: Boolean = false,
-    upload: Option[dom.File => Future[Option[AttachmentDto]]] = None,
-    onArrowUp: Option[() => Unit] = None,
-    toolbar: Boolean = true
-  ): EditorHandle = {
+  def create(el: dom.Element,
+             content: Option[Json],
+             placeholder: String,
+             channelId: Option[UUID],
+             onSubmit: () => Unit,
+             autofocus: Boolean = false,
+             onChange: Json => Unit = _ => (),
+             enterSubmit: Boolean = false,
+             upload: Option[dom.File => Future[Option[AttachmentDto]]] = None,
+             onArrowUp: Option[() => Unit] = None,
+             toolbar: Boolean = true): EditorHandle = {
     el.classList.add("sk-editor")
     val toolbarEl = this.el[dom.HTMLElement]("div", "sk-toolbar")
     val ctxBar = this.el[dom.HTMLElement]("div", "sk-toolbar sk-ctx")
@@ -339,10 +253,7 @@ object Editor {
       val groups =
         channelId.fold(Future.successful(List.empty[MentionGroupDto]))(c => Store.mentionGroups(c).recover(_ => Nil))
       people.zip(groups).map {
-        (
-          us,
-          gs
-        ) =>
+        (us, gs) =>
           (us.filter(u => ql.isEmpty || u.name.toLowerCase.contains(ql)).map(u =>
             js.Dynamic.literal(id = u.id.toString, label = u.name)
           ) ++
@@ -404,11 +315,7 @@ object Editor {
       popupOpen = (() => Popup.isOpen): js.Function0[Boolean],
       upload = up,
       prompt = (
-        (
-          m: String,
-          d: String
-        ) => Dialog.promptJs(m, d)
-      ): js.Function2[String, String, js.Promise[js.Any]],
+        (m: String, d: String) => Dialog.promptJs(m, d)): js.Function2[String, String, js.Promise[js.Any]],
       alert = ((m: String) => Dialog.alert(m)): js.Function1[String, Unit],
       autofocus = autofocus,
       enterSubmit = enterSubmit,
@@ -446,21 +353,8 @@ object Editor {
     hint.textContent = "「/」でメニュー"
     toolbarEl.appendChild(hint)
     val renderCtx = contextBar(ed, ctxBar)
-    def refresh(): Unit = buttons.foreach(
-      (
-        b,
-        active
-      ) =>
-        b.classList.toggle(
-          "active",
-          active.exists(
-            (
-              t,
-              a
-            ) => ed.isActive(t, a)
-          )
-        )
-    )
+    def refresh(): Unit =
+      buttons.foreach((b, active) => b.classList.toggle("active", active.exists((t, a) => ed.isActive(t, a))))
     ed.onUpdate(() => { refresh(); renderCtx() })
     renderCtx()
     new EditorHandle(ed, el, fileInput)

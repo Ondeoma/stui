@@ -9,14 +9,10 @@ class MattermostSpec extends munit.FunSuite {
   private val alice = UUID.randomUUID()
   private val users = Map("alice" -> (alice, "山田 アリス"), "bob.smith" -> (UUID.randomUUID(), "Bob"))
 
-  private def nodes(
-    doc: Json
-  ): List[Json] =
+  private def nodes(doc: Json): List[Json] =
     doc :: doc.hcursor.downField("content").focus.flatMap(_.asArray).toList.flatten.flatMap(nodes)
 
-  private def mentions(
-    doc: Json
-  ): List[(String, String)] =
+  private def mentions(doc: Json): List[(String, String)] =
     nodes(doc).filter(_.hcursor.get[String]("type").contains("mention"))
       .map(n =>
         (

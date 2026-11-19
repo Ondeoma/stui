@@ -13,14 +13,13 @@ import stui.shared.*
  * 兄弟のサービス（skea・skiwi・skawau・skuaka・skaka）からの通知（docs/integrations.md）。
  * OAuth で発行したトークン（write）で呼ぶ。ボット（サービスの名前）から本人への DM、または本人が参加しているチャンネルへ投稿する。
  */
-final class AppRoutes(
-  channels: ChannelStore,
-  users: UserStore,
-  chat: ChatService,
-  notifier: NotifyService,
-  val sessions: SessionAuth,
-  val access: Access2,
-  cfg: ApiConfig) extends RouteSupport {
+final class AppRoutes(channels: ChannelStore,
+                      users: UserStore,
+                      chat: ChatService,
+                      notifier: NotifyService,
+                      val sessions: SessionAuth,
+                      val access: Access2,
+                      cfg: ApiConfig) extends RouteSupport {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
 
@@ -31,9 +30,7 @@ final class AppRoutes(
     case req @ POST -> Root / "api" / "apps" / "notify" => postAppsNotify(req)
   }
 
-  private def postAppsNotify(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postAppsNotify(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       s.oauthClient.flatMap(id => cfg.oauthClients.find(_.id == id)) match {
         case None => err(ErrorCode.AppTokenRequired)
@@ -99,9 +96,6 @@ final class AppRoutes(
       }
     )
 
-  private def str(
-    j: Json,
-    k: String
-  ): Option[String] = j.hcursor.get[String](k).toOption.map(_.trim).filter(_.nonEmpty)
+  private def str(j: Json, k: String): Option[String] = j.hcursor.get[String](k).toOption.map(_.trim).filter(_.nonEmpty)
 
 }

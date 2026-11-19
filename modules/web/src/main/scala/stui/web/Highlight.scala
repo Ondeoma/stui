@@ -18,14 +18,10 @@ object Highlight {
 
   private val LangRe = js.RegExp("language-([A-Za-z0-9_+-]+)")
 
-  private def truthy(
-    v: js.Any
-  ): Boolean = js.DynamicImplicits.truthValue(v.asInstanceOf[js.Dynamic])
+  private def truthy(v: js.Any): Boolean = js.DynamicImplicits.truthValue(v.asInstanceOf[js.Dynamic])
 
   /** lowlight の結果（hast）を DOM にする. */
-  private def toNode(
-    n: js.Dynamic
-  ): dom.Node =
+  private def toNode(n: js.Dynamic): dom.Node =
     if (n.`type`.toString == "text") dom.document.createTextNode(n.value.toString)
     else {
       val el = dom.document.createElement("span").asInstanceOf[dom.HTMLElement]
@@ -36,9 +32,7 @@ object Highlight {
       el
     }
 
-  private def highlightIn(
-    root: dom.Document
-  ): Unit = lib.foreach { hl =>
+  private def highlightIn(root: dom.Document): Unit = lib.foreach { hl =>
     val codes = root.querySelectorAll(".rich pre code:not([data-hl])")
     if (codes.length > 0) {
       if (!hl.ready().asInstanceOf[Boolean])
@@ -64,12 +58,7 @@ object Highlight {
   def start(): Unit = {
     var queued = false
     def run(): Unit = { queued = false; highlightIn(dom.document) }
-    new dom.MutationObserver(
-      (
-        _,
-        _
-      ) => if (!queued) { queued = true; dom.window.requestAnimationFrame(_ => run()) }
-    )
+    new dom.MutationObserver((_, _) => if (!queued) { queued = true; dom.window.requestAnimationFrame(_ => run()) })
       .observe(dom.document.body, new dom.MutationObserverInit { childList = true; subtree = true })
     run()
   }

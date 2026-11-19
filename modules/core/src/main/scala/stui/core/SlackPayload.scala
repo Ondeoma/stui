@@ -6,15 +6,10 @@ import io.circe.{ACursor, Json}
 /** Slack・Mattermost の形のメッセージ（text と attachments）。受信の Webhook と Mattermost からの取り込みで使う。 */
 object SlackPayload {
 
-  private def str(
-    c: ACursor,
-    k: String
-  ): Option[String] = c.get[String](k).toOption.map(_.trim).filter(_.nonEmpty)
+  private def str(c: ACursor, k: String): Option[String] = c.get[String](k).toOption.map(_.trim).filter(_.nonEmpty)
 
   /** Markdown にする（attachments は見出し・本文・項目を並べる）。 */
-  def toMarkdown(
-    j: Json
-  ): String = {
+  def toMarkdown(j: Json): String = {
     val c = j.hcursor
     val atts = c.downField("attachments").focus.flatMap(_.asArray).toList.flatten.map { a =>
       val ac = a.hcursor
@@ -24,12 +19,7 @@ object SlackPayload {
         case _ => None
       }
       val fields = ac.downField("fields").focus.flatMap(_.asArray).toList.flatten.flatMap(f =>
-        (str(f.hcursor, "title"), str(f.hcursor, "value")).mapN(
-          (
-            t,
-            v
-          ) => s"- **$t**: $v"
-        )
+        (str(f.hcursor, "title"), str(f.hcursor, "value")).mapN((t, v) => s"- **$t**: $v")
       )
       (List(
         str(ac, "pretext"),

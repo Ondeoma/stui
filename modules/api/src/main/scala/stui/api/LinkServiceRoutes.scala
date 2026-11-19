@@ -24,15 +24,14 @@ import scala.concurrent.duration.*
  * （skiwi のページのタイトル・skawau のファイル名・skea のタスクのタイトル・skorimako のトレースやアラートの名前と状態）を読み、skaka に会議室を作る。
  * トークンは APP_SECRET の鍵で暗号化して保存する。
  */
-final class LinkServiceRoutes(
-  store: IntegrationTokenStore,
-  http: Client[IO],
-  box: SecretBox,
-  cache: LinkServiceRoutes.Cache,
-  chat: ChatService,
-  val sessions: SessionAuth,
-  val access: Access2,
-  cfg: ApiConfig)
+final class LinkServiceRoutes(store: IntegrationTokenStore,
+                              http: Client[IO],
+                              box: SecretBox,
+                              cache: LinkServiceRoutes.Cache,
+                              chat: ChatService,
+                              val sessions: SessionAuth,
+                              val access: Access2,
+                              cfg: ApiConfig)
   extends RouteSupport {
   import LinkServiceRoutes.*
 
@@ -51,9 +50,7 @@ final class LinkServiceRoutes(
     case req @ POST -> Root / "api" / "channels" / UuidVar(id) / "meeting" => postChannelMeeting(req, id)
   }
 
-  private def getIntegrationsLinks(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getIntegrationsLinks(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       sessions.appNames(req).flatMap(names =>
         cfg.linkServices.traverse(c =>
@@ -65,10 +62,7 @@ final class LinkServiceRoutes(
       ).flatMap(Ok(_))
     )
 
-  private def getIntegrationConnect(
-    req: Request[IO],
-    p: String
-  ): IO[Response[IO]] =
+  private def getIntegrationConnect(req: Request[IO], p: String): IO[Response[IO]] =
     sessionOnly(req)(s =>
       withService(p) { c =>
         val state = Crypto.randomToken(24)
@@ -93,10 +87,7 @@ final class LinkServiceRoutes(
       }
     )
 
-  private def getIntegrationCallback(
-    req: Request[IO],
-    p: String
-  ): IO[Response[IO]] =
+  private def getIntegrationCallback(req: Request[IO], p: String): IO[Response[IO]] =
     sessionOnly(req)(s =>
       withService(p) { c =>
         param(req, "state").fold(IO.pure(None))(st => store.takeState(st, p)).flatMap {
@@ -132,10 +123,7 @@ final class LinkServiceRoutes(
       }
     )
 
-  private def deleteIntegrationConnection(
-    req: Request[IO],
-    p: String
-  ): IO[Response[IO]] =
+  private def deleteIntegrationConnection(req: Request[IO], p: String): IO[Response[IO]] =
     sessionOnly(req)(s =>
       withService(p) { c =>
         tokenOf(s.user.id, p).flatMap(_.traverse_ { t =>
@@ -148,10 +136,7 @@ final class LinkServiceRoutes(
       }
     )
 
-  private def postIntegrationTitles(
-    req: Request[IO],
-    p: String
-  ): IO[Response[IO]] =
+  private def postIntegrationTitles(req: Request[IO], p: String): IO[Response[IO]] =
     authed(req)(s =>
       body[LinkTitlesReq](req) { r =>
         val ids = r.ids.map(_.trim).filter(kinds(p).validId).distinct
@@ -175,89 +160,73 @@ final class LinkServiceRoutes(
       }
     )
 
-  private def postChannelMeeting(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
-    withChannel(req, id, Need.Post)(
-      (
-        s,
-        ctx
-      ) =>
-        body[MeetingReq](req) { r =>
-          service("skaka") match {
-            case None => err(ErrorCode.MeetingServiceNotConfigured)
-            case Some(c) =>
-              tokenOf(s.user.id, "skaka").flatMap {
-                case None => err(ErrorCode.MeetingServiceNotLinked)
-                case Some(token) =>
-                  val title = r.name.map(_.trim).filter(_.nonEmpty).getOrElse(
-                    if ctx.channel.isDm then s"${s.user.name} さんとの会議" else s"#${ctx.channel.name} の会議"
-                  ).take(100)
-                  val body = Json.obj(
-                    "name" -> title.asJson,
-                    "description" -> s"stui から作成".asJson,
-                    "guestAccess" -> false.asJson,
-                    "lobby" -> false.asJson
+  private def postChannelMeeting(req: Request[IO], id: UUID): IO[Response[IO]] =
+    withChannel(req, id, Need.Post)((s, ctx) =>
+      body[MeetingReq](req) { r =>
+        service("skaka") match {
+          case None => err(ErrorCode.MeetingServiceNotConfigured)
+          case Some(c) =>
+            tokenOf(s.user.id, "skaka").flatMap {
+              case None => err(ErrorCode.MeetingServiceNotLinked)
+              case Some(token) =>
+                val title = r.name.map(_.trim).filter(_.nonEmpty).getOrElse(
+                  if ctx.channel.isDm then s"${s.user.name} さんとの会議" else s"#${ctx.channel.name} の会議"
+                ).take(100)
+                val body = Json.obj(
+                  "name" -> title.asJson,
+                  "description" -> s"stui から作成".asJson,
+                  "guestAccess" -> false.asJson,
+                  "lobby" -> false.asJson
+                )
+                http.run(Request[IO](Method.POST, Uri.unsafeFromString(s"${c.apiUrl}/api/rooms")).withEntity(body)
+                  .putHeaders(
+                    Authorization(Credentials.Token(AuthScheme.Bearer, token)),
+                    "Accept" -> "application/json"
+                  ))
+                  .use(res =>
+                    if res.status.isSuccess then res.as[Json].map(Right(_)) else IO.pure(Left(res.status.code))
                   )
-                  http.run(Request[IO](Method.POST, Uri.unsafeFromString(s"${c.apiUrl}/api/rooms")).withEntity(body)
-                    .putHeaders(
-                      Authorization(Credentials.Token(AuthScheme.Bearer, token)),
-                      "Accept" -> "application/json"
-                    ))
-                    .use(res =>
-                      if res.status.isSuccess then res.as[Json].map(Right(_)) else IO.pure(Left(res.status.code))
-                    )
-                    .timeout(15.seconds).attempt.flatMap {
-                      case Right(Left(401)) => store.deleteToken(s.user.id, "skaka") *>
-                          err(ErrorCode.MeetingServiceLinkExpired)
-                      case Right(Left(code)) => err(ErrorCode.MeetingServiceError, s"skaka が $code を返しました")
-                      case Left(e) =>
-                        err(ErrorCode.MeetingServiceUnreachable, s"skaka に接続できませんでした: ${e.getMessage.take(200)}")
-                      case Right(Right(room)) =>
-                        val url = room.hcursor.get[String]("url").toOption.filter(u =>
-                          u.startsWith("https://") || u.startsWith("http://")
-                        ).getOrElse(c.url)
-                        val name = room.hcursor.get[String]("name").getOrElse(title)
-                        val code = room.hcursor.get[String]("code").toOption
-                        val doc = RichText.fromMarkdown(s"📹 Web 会議を始めました: [$name]($url)")
-                        val props = Json.obj("meeting" ->
-                          Json.obj("url" -> url.asJson, "name" -> name.asJson, "code" -> code.asJson))
-                        respond(chat.publish(
-                          ctx.channel,
-                          Author(s.user, s.viaString),
-                          doc,
-                          r.rootId,
-                          false,
-                          props,
-                          "user"
-                        ))(Created(_))
-                    }
-              }
-          }
+                  .timeout(15.seconds).attempt.flatMap {
+                    case Right(Left(401)) => store.deleteToken(s.user.id, "skaka") *>
+                        err(ErrorCode.MeetingServiceLinkExpired)
+                    case Right(Left(code)) => err(ErrorCode.MeetingServiceError, s"skaka が $code を返しました")
+                    case Left(e) =>
+                      err(ErrorCode.MeetingServiceUnreachable, s"skaka に接続できませんでした: ${e.getMessage.take(200)}")
+                    case Right(Right(room)) =>
+                      val url = room.hcursor.get[String]("url").toOption.filter(u =>
+                        u.startsWith("https://") || u.startsWith("http://")
+                      ).getOrElse(c.url)
+                      val name = room.hcursor.get[String]("name").getOrElse(title)
+                      val code = room.hcursor.get[String]("code").toOption
+                      val doc = RichText.fromMarkdown(s"📹 Web 会議を始めました: [$name]($url)")
+                      val props = Json.obj("meeting" ->
+                        Json.obj("url" -> url.asJson, "name" -> name.asJson, "code" -> code.asJson))
+                      respond(chat.publish(
+                        ctx.channel,
+                        Author(s.user, s.viaString),
+                        doc,
+                        r.rootId,
+                        false,
+                        props,
+                        "user"
+                      ))(Created(_))
+                  }
+            }
         }
+      }
     )
 
   private val CacheMillis = 60.seconds.toMillis
 
-  private def callback(
-    p: String
-  ): String = s"${cfg.publicUrl}/api/integrations/$p/callback"
+  private def callback(p: String): String = s"${cfg.publicUrl}/api/integrations/$p/callback"
 
-  private def basic(
-    c: LinkService
-  ) = Authorization(BasicCredentials(c.clientId, c.clientSecret))
+  private def basic(c: LinkService) = Authorization(BasicCredentials(c.clientId, c.clientSecret))
 
-  private def redirect(
-    to: String
-  ): IO[Response[IO]] = IO.pure(Response[IO](Status.Found).putHeaders(Location(Uri.unsafeFromString(to))))
+  private def redirect(to: String): IO[Response[IO]] =
+    IO.pure(Response[IO](Status.Found).putHeaders(Location(Uri.unsafeFromString(to))))
 
   /** 個人設定へ戻る（結果を integration=…&result=… に付ける）。 */
-  private def done(
-    p: String,
-    returnTo: String,
-    result: String
-  ): IO[Response[IO]] = {
+  private def done(p: String, returnTo: String, result: String): IO[Response[IO]] = {
     // 同じサイトのパスだけ。開発中（DEV_LOGIN）は画面の開発サーバー（http://localhost:…）にも戻せる
     val devOrigin = cfg.devLogin &&
       (returnTo.startsWith("http://localhost:") || returnTo.startsWith("http://127.0.0.1:"))
@@ -265,34 +234,17 @@ final class LinkServiceRoutes(
     redirect(back + (if back.contains("?") then "&" else "?") + s"integration=$p&result=$result")
   }
 
-  private def service(
-    p: String
-  ): Option[LinkService] = cfg.linkServices.find(_.provider == p)
+  private def service(p: String): Option[LinkService] = cfg.linkServices.find(_.provider == p)
 
-  private def withService(
-    p: String
-  )(
-    f: LinkService => IO[Response[IO]]
-  ): IO[Response[IO]] =
+  private def withService(p: String)(f: LinkService => IO[Response[IO]]): IO[Response[IO]] =
     service(p).fold(err(ErrorCode.LinkServiceNotConfigured, s"$p との連携は設定されていません"))(f)
 
-  private def tokenOf(
-    uid: UUID,
-    p: String
-  ): IO[Option[String]] = store.token(uid, p).map(_.flatMap(box.decrypt))
+  private def tokenOf(uid: UUID, p: String): IO[Option[String]] = store.token(uid, p).map(_.flatMap(box.decrypt))
 
-  private def forget(
-    uid: UUID,
-    p: String
-  ): IO[Unit] = cache.update(_.filterNot(k => k._1._1 == p && k._1._2 == uid))
+  private def forget(uid: UUID, p: String): IO[Unit] = cache.update(_.filterNot(k => k._1._1 == p && k._1._2 == uid))
 
   /** 本人のトークンでリンク先の名前をまとめて読む（60秒キャッシュ。見られないものも「なし」として覚える）。トークンが失効していたら None。 */
-  private def lookup(
-    c: LinkService,
-    uid: UUID,
-    token: String,
-    ids: List[String]
-  ): IO[Option[List[LinkTitleDto]]] = {
+  private def lookup(c: LinkService, uid: UUID, token: String, ids: List[String]): IO[Option[List[LinkTitleDto]]] = {
     val kind = kinds(c.provider)
     for {
       now <- IO.realTime.map(_.toMillis)
@@ -340,57 +292,36 @@ object LinkServiceRoutes {
    * サービスごとの違い: 表示名、許可を求めるスコープ、問い合わせの API（なければ名前は出さない）、送る配列の名前、
    * 応答の配列の名前、1件の読み方、ID の形。
    */
-  final case class Kind(
-    name: String,
-    scope: String,
-    lookupPath: String,
-    requestKey: String,
-    listKey: String,
-    parse: Json => Option[LinkTitleDto],
-    validId: String => Boolean)
+  final case class Kind(name: String,
+                        scope: String,
+                        lookupPath: String,
+                        requestKey: String,
+                        listKey: String,
+                        parse: Json => Option[LinkTitleDto],
+                        validId: String => Boolean)
 
-  private def field[A: Decoder](
-    j: Json,
-    k: String
-  ): Option[A] = j.hcursor.get[A](k).toOption
+  private def field[A: Decoder](j: Json, k: String): Option[A] = j.hcursor.get[A](k).toOption
 
-  private def isUuid(
-    s: String
-  ): Boolean = scala.util.Try(UUID.fromString(s)).isSuccess
+  private def isUuid(s: String): Boolean = scala.util.Try(UUID.fromString(s)).isSuccess
 
   /** skiwi: {"pages":[{"id","workspaceId","title","icon"}]} */
-  private def skiwiPage(
-    j: Json
-  ): Option[LinkTitleDto] =
-    (field[UUID](j, "id"), field[String](j, "title")).mapN(
-      (
-        id,
-        t
-      ) => LinkTitleDto(id.toString, t, field[Option[String]](j, "icon").flatten.orElse(Some("📄")))
+  private def skiwiPage(j: Json): Option[LinkTitleDto] =
+    (field[UUID](j, "id"), field[String](j, "title")).mapN((id, t) =>
+      LinkTitleDto(id.toString, t, field[Option[String]](j, "icon").flatten.orElse(Some("📄")))
     )
 
   /** skea: {"tasks":[{"key","title","status":{"name","category"}}]} */
-  private def skeaTask(
-    j: Json
-  ): Option[LinkTitleDto] =
+  private def skeaTask(j: Json): Option[LinkTitleDto] =
     (field[String](j, "key"), field[String](j, "title")).mapN {
-      (
-        k,
-        t
-      ) =>
+      (k, t) =>
         val done = j.hcursor.downField("status").get[String]("category").toOption.contains("done")
         LinkTitleDto(k, s"$k $t", Some(if done then "✅" else "📋"))
     }
 
   /** skorimako: {"links":[{"id","kind","title","summary","status","icon"}]}（id は traces/…・alerts/…・dashboards/…） */
-  private def skorimakoLink(
-    j: Json
-  ): Option[LinkTitleDto] =
+  private def skorimakoLink(j: Json): Option[LinkTitleDto] =
     (field[String](j, "id"), field[String](j, "title")).mapN {
-      (
-        id,
-        t
-      ) =>
+      (id, t) =>
         val summary = field[String](j, "summary").filter(_.nonEmpty)
         LinkTitleDto(id, summary.fold(t)(x => s"$t（$x）"), field[String](j, "icon").orElse(Some("📈")))
     }
@@ -399,14 +330,9 @@ object LinkServiceRoutes {
     "^(traces/[0-9a-f]{1,64}|(alerts|dashboards)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$".r
 
   /** skawau: {"files":[{"id","name","folder"}]} */
-  private def skawauFile(
-    j: Json
-  ): Option[LinkTitleDto] =
-    (field[UUID](j, "id"), field[String](j, "name")).mapN(
-      (
-        id,
-        n
-      ) => LinkTitleDto(id.toString, n, Some(FileIcons.of(n, field[Boolean](j, "folder").contains(true))))
+  private def skawauFile(j: Json): Option[LinkTitleDto] =
+    (field[UUID](j, "id"), field[String](j, "name")).mapN((id, n) =>
+      LinkTitleDto(id.toString, n, Some(FileIcons.of(n, field[Boolean](j, "folder").contains(true))))
     )
 
   val kinds: Map[String, Kind] = Map(

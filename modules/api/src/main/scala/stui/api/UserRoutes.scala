@@ -19,14 +19,13 @@ import sbirds.storage.BlobStore
 import java.util.UUID
 
 /** 自分の情報・APIキー・通知の設定、ユーザーの一覧、管理画面（ユーザー・監査ログ）。 */
-final class UserRoutes(
-  users: UserStore,
-  channels: ChannelStore,
-  activity: ActivityStore,
-  blobs: Option[BlobStore],
-  emoji: EmojiStore,
-  val sessions: SessionAuth,
-  val access: Access2) extends RouteSupport {
+final class UserRoutes(users: UserStore,
+                       channels: ChannelStore,
+                       activity: ActivityStore,
+                       blobs: Option[BlobStore],
+                       emoji: EmojiStore,
+                       val sessions: SessionAuth,
+                       val access: Access2) extends RouteSupport {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case req @ GET -> Root / "api" / "me" => getMe(req)
@@ -51,14 +50,10 @@ final class UserRoutes(
     case req @ GET -> Root / "api" / "admin" / "audit" => getAdminAudit(req)
   }
 
-  private def getMe(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getMe(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s => sessions.appNames(req).flatMap(n => Ok(me(s).copy(appNames = n))))
 
-  private def patchMe(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def patchMe(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       body[UpdateMeReq](req)(r =>
         if r.timezone.exists(tz => scala.util.Try(java.time.ZoneId.of(tz)).isFailure) then
@@ -67,26 +62,18 @@ final class UserRoutes(
       )
     )
 
-  private def getMeNotifyPrefs(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getMeNotifyPrefs(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s => users.notifyPrefs(s.user.id).flatMap(Ok(_)))
 
-  private def putMeNotifyPrefs(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def putMeNotifyPrefs(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       body[List[NotifyPrefDto]](req)(ps => users.setNotifyPrefs(s.user.id, ps.take(50)) *> NoContent())
     )
 
-  private def getMeApiKeys(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getMeApiKeys(req: Request[IO]): IO[Response[IO]] =
     sessionOnly(req)(s => users.keys(s.user.id).flatMap(Ok(_)))
 
-  private def postMeApiKeys(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postMeApiKeys(req: Request[IO]): IO[Response[IO]] =
     sessionOnly(req)(s =>
       body[CreateApiKeyReq](req)(r =>
         respond(ApiKeyIssue(
@@ -108,10 +95,7 @@ final class UserRoutes(
       )
     )
 
-  private def deleteMeApiKey(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def deleteMeApiKey(req: Request[IO], id: UUID): IO[Response[IO]] =
     sessionOnly(req)(s =>
       users.revokeKey(s.user.id, id).flatMap {
         case true => activity.audit(Some(s.user.id), "web", "api_key.revoke", Some(id.toString), Json.obj()) *>
@@ -120,9 +104,7 @@ final class UserRoutes(
       }
     )
 
-  private def postMeAvatar(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postMeAvatar(req: Request[IO]): IO[Response[IO]] =
     sessionOnly(req)(s =>
       blobs match {
         case None => err(ErrorCode.StorageNotConfigured, "画像の保存先（S3）が設定されていません")
@@ -138,15 +120,10 @@ final class UserRoutes(
       }
     )
 
-  private def deleteMeAvatar(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def deleteMeAvatar(req: Request[IO]): IO[Response[IO]] =
     sessionOnly(req)(s => replaceAvatar(s.user.id, None) *> NoContent())
 
-  private def getUserAvatar(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def getUserAvatar(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(_ =>
       (users.avatarKey(id), IO.pure(blobs)).tupled.flatMap {
         case (Some(key), Some(store)) => store.get(key).flatMap {
@@ -166,14 +143,10 @@ final class UserRoutes(
       }
     )
 
-  private def getEmojis(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getEmojis(req: Request[IO]): IO[Response[IO]] =
     authed(req)(_ => emoji.list.flatMap(Ok(_)))
 
-  private def postEmoji(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postEmoji(req: Request[IO]): IO[Response[IO]] =
     sessionOnly(req)(s =>
       (blobs, param(req, "name").map(_.toLowerCase)) match {
         case (None, _) => err(ErrorCode.StorageNotConfigured, "画像の保存先（S3）が設定されていません")
@@ -195,10 +168,7 @@ final class UserRoutes(
       }
     )
 
-  private def deleteEmoji(
-    req: Request[IO],
-    name: String
-  ): IO[Response[IO]] =
+  private def deleteEmoji(req: Request[IO], name: String): IO[Response[IO]] =
     sessionOnly(req)(s =>
       emoji.find(name).flatMap {
         case None => err(ErrorCode.EmojiNotFound)
@@ -207,10 +177,7 @@ final class UserRoutes(
       }
     )
 
-  private def getEmojiImage(
-    req: Request[IO],
-    name: String
-  ): IO[Response[IO]] =
+  private def getEmojiImage(req: Request[IO], name: String): IO[Response[IO]] =
     authed(req)(_ =>
       (emoji.find(name), IO.pure(blobs)).tupled.flatMap {
         case (Some(e), Some(store)) => store.get(e.s3Key).flatMap {
@@ -228,19 +195,14 @@ final class UserRoutes(
       }
     )
 
-  private def getUsers(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getUsers(req: Request[IO]): IO[Response[IO]] =
     authed(req)(_ =>
       users.list(param(req, "q"), includeDisabled = false, intParam(req, "limit", 50, 500)).flatMap(us =>
         Ok(us.map(u => UserBrief(u.id, u.name, u.avatarUrl, u.bot)))
       )
     )
 
-  private def getUser(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def getUser(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(_ =>
       users.find(id).flatMap {
         case None => err(ErrorCode.UserNotFound)
@@ -256,20 +218,13 @@ final class UserRoutes(
       }
     )
 
-  private def getAdminChannels(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getAdminChannels(req: Request[IO]): IO[Response[IO]] =
     admin(req)(s => channels.all(s.user.id).flatMap(Ok(_)))
 
-  private def getAdminUsers(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getAdminUsers(req: Request[IO]): IO[Response[IO]] =
     admin(req)(_ => users.list(param(req, "q"), includeDisabled = true, 2000).flatMap(Ok(_)))
 
-  private def patchAdminUser(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def patchAdminUser(req: Request[IO], id: UUID): IO[Response[IO]] =
     admin(req)(s =>
       body[UpdateUserReq](req) { r =>
         if id == s.user.id && (r.isAdmin.contains(false) || r.disabled.contains(true)) then
@@ -283,9 +238,7 @@ final class UserRoutes(
       }
     )
 
-  private def getAdminAudit(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getAdminAudit(req: Request[IO]): IO[Response[IO]] =
     admin(req)(_ =>
       activity.auditLog(
         param(req, "before").flatMap(_.toLongOption),
@@ -298,17 +251,12 @@ final class UserRoutes(
   private val avatarMaxBytes = 2L * 1024 * 1024
 
   /** アイコンを差し替える（前の画像は消す）。 */
-  private def replaceAvatar(
-    uid: UUID,
-    key: Option[String]
-  ): IO[Unit] = {
+  private def replaceAvatar(uid: UUID, key: Option[String]): IO[Unit] = {
     val url = key.map(_ => s"/api/users/$uid/avatar?v=${Crypto.randomToken(6)}")
     users.setAvatar(uid, key, url).flatMap(_.traverse_(old => blobs.traverse_(_.delete(old).handleError(_ => ()))))
   }
 
-  private def me(
-    s: AuthSession
-  ): MeDto =
+  private def me(s: AuthSession): MeDto =
     MeDto(
       s.user.id,
       s.user.name,

@@ -20,28 +20,19 @@ object Guards {
   private val JsonLimit: Long = 2L * 1024 * 1024
   private val safe = Set(Method.GET, Method.HEAD, Method.OPTIONS)
 
-  private def isUpload(
-    req: Request[IO]
-  ): Boolean = {
+  private def isUpload(req: Request[IO]): Boolean = {
     val p = req.pathInfo.renderString
     req.method == Method.POST &&
     (p.matches("^/api/channels/[^/]+/files$") || p == "/api/me/avatar" || p == "/api/emoji")
   }
 
-  private def originOf(
-    u: String
-  ): String = Uri.fromString(u).toOption.map(x =>
+  private def originOf(u: String): String = Uri.fromString(u).toOption.map(x =>
     s"${x.scheme.fold("")(_.value)}://${x.authority.fold("")(_.renderString)}"
   ).getOrElse(u)
 
-  def apply(
-    app: HttpRoutes[IO],
-    cfg: ApiConfig
-  ): HttpRoutes[IO] = {
+  def apply(app: HttpRoutes[IO], cfg: ApiConfig): HttpRoutes[IO] = {
     val allowed = originOf(cfg.publicUrl).toLowerCase
-    def foreign(
-      req: Request[IO]
-    ): Boolean =
+    def foreign(req: Request[IO]): Boolean =
       !safe.contains(req.method) &&
         req.headers.get[Authorization].isEmpty &&
         req.cookies.exists(_.name == cfg.cookieName) &&
@@ -64,10 +55,7 @@ object Guards {
   }
 
   /** すべての応答に付けるセキュリティのヘッダー（応答が自分で付けたものは残す）。iframe に入れさせない（クリックジャッキング）。 */
-  private def secure(
-    r: Response[IO],
-    https: Boolean
-  ): Response[IO] = {
+  private def secure(r: Response[IO], https: Boolean): Response[IO] = {
     val base = List(
       "X-Frame-Options" -> "DENY",
       "Content-Security-Policy" -> "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",

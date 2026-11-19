@@ -16,12 +16,7 @@ import java.util.UUID
  * adminScope は admin スコープを付けられないときの失敗（付けてよければ None）。平文のキーは応答で1回だけ返す。
  */
 object ApiKeyIssue {
-  def apply(
-    users: UserStore,
-    userId: UUID,
-    r: CreateApiKeyReq,
-    adminScope: Option[AppError]
-  ): Res[CreatedApiKeyDto] = {
+  def apply(users: UserStore, userId: UUID, r: CreateApiKeyReq, adminScope: Option[AppError]): Res[CreatedApiKeyDto] = {
     val scopes = r.scopes.map(_.trim.toLowerCase).distinct
     if r.name.trim.isEmpty then IO.pure(Left(AppError(ErrorCode.NameRequired)))
     else if scopes.isEmpty || !scopes.forall(ApiScope.all.contains) then

@@ -10,11 +10,7 @@ import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 import scala.scalajs.js
 import scala.util.{Failure, Success}
 
-final case class Toast(
-  id: Int,
-  text: String,
-  link: Option[String],
-  error: Boolean)
+final case class Toast(id: Int, text: String, link: Option[String], error: Boolean)
 
 /**
  * 画面全体で共有する状態と、変更の自動同期.
@@ -54,58 +50,39 @@ object Store {
   /** システム管理者か. */
   def isAdmin = me.mapC(_.exists(_.isAdmin))
 
-  def channel(
-    id: UUID
-  ): Option[ChannelDto] = channels.v.find(_.id == id)
+  def channel(id: UUID): Option[ChannelDto] = channels.v.find(_.id == id)
 
   /** チャンネルの表示名（DM は相手の名前）. */
-  def title(
-    c: ChannelDto
-  ): String =
+  def title(c: ChannelDto): String =
     if (ChannelKind.isDm(c.kind)) {
       val names = c.dmUsers.map(_.name)
       if (c.dmUsers.map(_.id) == myId.toList) s"${names.mkString}（自分）" else names.mkString("、")
     } else c.name
 
-  def titleOf(
-    b: ChannelBrief
-  ): String =
+  def titleOf(b: ChannelBrief): String =
     channel(b.id).map(title).getOrElse(if (ChannelKind.isDm(b.kind)) "DM" else b.name)
 
-  def prefix(
-    kind: String
-  ): String = if (ChannelKind.isDm(kind)) "" else if (kind == ChannelKind.Private) "🔒 " else "# "
+  def prefix(kind: String): String =
+    if (ChannelKind.isDm(kind)) "" else if (kind == ChannelKind.Private) "🔒 " else "# "
 
   // ---------------------------------------------------------------- トースト
 
-  def toast(
-    text: String,
-    link: Option[String] = None,
-    error: Boolean = false
-  ): Unit = {
+  def toast(text: String, link: Option[String] = None, error: Boolean = false): Unit = {
     toastSeq += 1
     val t = Toast(toastSeq, text, link, error)
     toasts := (toasts.v :+ t).takeRight(5)
     dom.window.setTimeout(() => dismiss(t.id), if (error) 9000 else 6000)
   }
 
-  def dismiss(
-    id: Int
-  ): Unit = toasts := toasts.v.filterNot(_.id == id)
+  def dismiss(id: Int): Unit = toasts := toasts.v.filterNot(_.id == id)
 
-  def error(
-    e: Throwable
-  ): Unit = e match {
+  def error(e: Throwable): Unit = e match {
     case ApiError(401, _) => ()
     case other => toast(other.getMessage, error = true)
   }
 
   /** Future の失敗をトーストで知らせる. */
-  def report[A](
-    f: Future[A]
-  )(
-    ok: A => Unit
-  ): Unit = f.onComplete {
+  def report[A](f: Future[A])(ok: A => Unit): Unit = f.onComplete {
     case Success(a) => ok(a)
     case Failure(e) => error(e)
   }
@@ -134,18 +111,13 @@ object Store {
   }
 
   /** 一覧の中のチャンネルを差し替える（設定を変えたとき）. */
-  def replace(
-    c: ChannelDto
-  ): Unit =
+  def replace(c: ChannelDto): Unit =
     channels :=
       (if (channels.v.exists(_.id == c.id)) channels.v.map(x => if (x.id == c.id) c else x)
        else if (c.member) channels.v :+ c else channels.v)
 
   /** 既読にした（一覧の未読の数を消す）. */
-  def markedRead(
-    id: UUID,
-    seq: Long
-  ): Unit = {
+  def markedRead(id: UUID, seq: Long): Unit = {
     channels := channels.v.map(c =>
       if (c.id == id) c.copy(unread = 0, mentions = 0, lastReadSeq = math.max(c.lastReadSeq, seq)) else c
     )
@@ -166,9 +138,7 @@ object Store {
   }
 
   /** メンションの候補（チャンネルのメンバー）. */
-  def members(
-    channelId: UUID
-  ): Future[List[UserBrief]] =
+  def members(channelId: UUID): Future[List[UserBrief]] =
     memberCache.get(channelId) match {
       case Some(a) => Future.successful(a)
       case None => Api.members(channelId).map(_.map(_.user).filterNot(_.bot)).map { a =>
@@ -176,33 +146,23 @@ object Store {
         }
     }
 
-  def mentionGroups(
-    channelId: UUID
-  ): Future[List[MentionGroupDto]] =
+  def mentionGroups(channelId: UUID): Future[List[MentionGroupDto]] =
     groupCache.get(channelId) match {
       case Some(a) => Future.successful(a)
       case None => Api.mentionGroups(channelId).map { a => groupCache = groupCache.updated(channelId, a); a }
     }
 
-  def forgetMembers(
-    channelId: UUID
-  ): Unit = memberCache -= channelId
+  def forgetMembers(channelId: UUID): Unit = memberCache -= channelId
 
   // ---------------------------------------------------------------- 画面の移動
 
-  def openChannel(
-    id: UUID
-  ): Unit = { sideOpen := false; Router.go(s"/c/$id") }
+  def openChannel(id: UUID): Unit = { sideOpen := false; Router.go(s"/c/$id") }
 
   /** DM を開く（相手. 空なら自分だけ）. */
-  def openDm(
-    users: List[UUID]
-  ): Unit = report(Api.openDm(users)) { c => replace(c); openChannel(c.id) }
+  def openDm(users: List[UUID]): Unit = report(Api.openDm(users)) { c => replace(c); openChannel(c.id) }
 
   /** 表示中のチャンネルを知らせる（参加していない公開チャンネルの変更も受け取る）. */
-  def view(
-    id: Option[UUID]
-  ): Unit = if (viewing != id) {
+  def view(id: Option[UUID]): Unit = if (viewing != id) {
     viewing = id
     val watch = id.filterNot(i => channel(i).exists(_.member))
     if (watch != streamWatch) { stream.foreach(_.close()); stream = None; connect() }
@@ -259,8 +219,7 @@ object Store {
           () => {
             dom.window.focus()
             n.channel.foreach(c => Router.go(Paths.message(c.id, n.messageId, n.rootId)))
-          }
-        ): js.Function0[Unit]
+          }): js.Function0[Unit]
       })
 
   def askDesktopPermission(): Unit =
@@ -310,29 +269,22 @@ object Store {
 }
 
 /** 画面内のダイアログ（ブラウザ標準の confirm・prompt・alert の代わり）. 表示は parts/DialogHost.st. */
-final case class DialogReq(
-  message: String,
-  okLabel: String,
-  danger: Boolean,
-  input: Option[RV[String]],
-  choices: List[(String, String)],
-  cancel: Boolean,
-  onOk: String => Unit,
-  onCancel: () => Unit)
+final case class DialogReq(message: String,
+                           okLabel: String,
+                           danger: Boolean,
+                           input: Option[RV[String]],
+                           choices: List[(String, String)],
+                           cancel: Boolean,
+                           onOk: String => Unit,
+                           onCancel: () => Unit)
 
 /** この端末だけの表示の設定（localStorage. 使えないときは既定値）. */
 object Prefs {
 
-  def get(
-    key: String,
-    default: String
-  ): String =
+  def get(key: String, default: String): String =
     scala.util.Try(Option(dom.window.localStorage.getItem("stui." + key))).toOption.flatten.getOrElse(default)
 
-  def set(
-    key: String,
-    value: String
-  ): Unit = scala.util.Try(dom.window.localStorage.setItem("stui." + key, value))
+  def set(key: String, value: String): Unit = scala.util.Try(dom.window.localStorage.setItem("stui." + key, value))
 
 }
 
@@ -346,40 +298,26 @@ object Theme {
     if (current.v == "system") el.removeAttribute("data-theme") else el.setAttribute("data-theme", current.v)
   }
 
-  def set(
-    v: String
-  ): Unit = { current := v; Prefs.set("theme", v); apply() }
+  def set(v: String): Unit = { current := v; Prefs.set("theme", v); apply() }
 
   val options: List[(String, String)] = List("system" -> "🖥 自動（OS に合わせる）", "light" -> "☀️ ライト", "dark" -> "🌙 ダーク")
 
 }
 
 /** オートコンプリート（parts/Combo.st）の選択肢. icon は前に付ける文字、user はアイコン、color はラベルの色. */
-final case class Opt(
-  value: String,
-  label: String,
-  icon: String = "",
-  user: Option[UserBrief] = None,
-  color: String = "",
-  hint: String = "")
+final case class Opt(value: String,
+                     label: String,
+                     icon: String = "",
+                     user: Option[UserBrief] = None,
+                     color: String = "",
+                     hint: String = "")
 
 object Opt {
-  def users(
-    us: List[UserBrief]
-  ): List[Opt] = us.map(u => Opt(u.id.toString, u.name, user = Some(u)))
-  def of(
-    xs: List[(String, String)]
-  ): List[Opt] = xs.map(
-    (
-      v,
-      l
-    ) => Opt(v, l)
-  )
+  def users(us: List[UserBrief]): List[Opt] = us.map(u => Opt(u.id.toString, u.name, user = Some(u)))
+  def of(xs: List[(String, String)]): List[Opt] = xs.map((v, l) => Opt(v, l))
 
   /** 値と表示が同じ選択肢. */
-  def names(
-    xs: List[String]
-  ): List[Opt] = xs.map(x => Opt(x, x))
+  def names(xs: List[String]): List[Opt] = xs.map(x => Opt(x, x))
 }
 
 /** カスタム絵文字（リアクション用. 一度だけ読む）. */
@@ -388,16 +326,12 @@ object Emojis {
   val custom: RV[List[CustomEmojiDto]] = RV(Nil)
   private var loaded = false
 
-  def load(
-    force: Boolean = false
-  ): Unit = if (!loaded || force) {
+  def load(force: Boolean = false): Unit = if (!loaded || force) {
     loaded = true
     Api.get[List[CustomEmojiDto]]("/api/emoji").foreach(custom := _)
   }
 
   /** ":name:" ならカスタム絵文字の画像の URL. */
-  def image(
-    e: String
-  ): Option[String] = Reactions.customName(e).map(CustomEmoji.url)
+  def image(e: String): Option[String] = Reactions.customName(e).map(CustomEmoji.url)
 
 }

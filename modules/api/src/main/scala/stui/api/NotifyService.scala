@@ -10,24 +10,21 @@ import java.util.UUID
 import scala.concurrent.duration.*
 
 /** 通知（画面内・メール）。メールは少し待ってから送り、その間に画面で読んだら送らない。 */
-final class NotifyService(
-  activity: ActivityStore,
-  cfg: ApiConfig,
-  mailDelaySeconds: Int,
-  push: Option[sbirds.push.PushService] = None) {
+final class NotifyService(activity: ActivityStore,
+                          cfg: ApiConfig,
+                          mailDelaySeconds: Int,
+                          push: Option[sbirds.push.PushService] = None) {
 
   /** 1人に通知する（ボット・無効なユーザーは呼び出し側で除く）。 */
-  def send(
-    kind: String,
-    to: UUID,
-    actor: Option[UUID],
-    channelId: Option[UUID],
-    messageId: Option[UUID],
-    title: String,
-    body: String,
-    link: String,
-    mail: Boolean = true
-  ): IO[Unit] =
+  def send(kind: String,
+           to: UUID,
+           actor: Option[UUID],
+           channelId: Option[UUID],
+           messageId: Option[UUID],
+           title: String,
+           body: String,
+           link: String,
+           mail: Boolean = true): IO[Unit] =
     sbirds.observe.Telemetry.span("notify.send", "kind" -> kind)(for {
       nid <- activity.notify(to, kind, channelId, messageId, actor, title, body.take(500))
       // この端末で受け取る設定（PWA のプッシュ通知）にしていれば、ブラウザを閉じていても知らせる
@@ -59,9 +56,7 @@ final class NotifyService(
     } yield ()).handleErrorWith(e => sbirds.observe.Log.report(ErrorCode.NotifyFailed, e.toString, e))
 
   /** メールの送信ワーカー（30秒ごと）。既読になった通知・止めた種類のメールは送らない。 */
-  def mailLoop(
-    mailer: Option[Mailer]
-  ): IO[Nothing] =
+  def mailLoop(mailer: Option[Mailer]): IO[Nothing] =
     Periodic.run(20.seconds, 30.seconds, ErrorCode.MailWorkerFailed) {
       activity.processMail(50) { row =>
         mailer match {

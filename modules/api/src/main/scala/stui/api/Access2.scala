@@ -8,15 +8,9 @@ import sbirds.shared.AppError
 import java.util.UUID
 
 /** 権限の確認（ルートとサービスで共通）。見えないものは 404、権限が足りなければ 403。 */
-final class Access2(
-  channels: ChannelStore,
-  messages: MessageStore) {
+final class Access2(channels: ChannelStore, messages: MessageStore) {
 
-  def channel(
-    s: AuthSession,
-    id: UUID,
-    need: Need
-  ): Res[ChannelCtx] =
+  def channel(s: AuthSession, id: UUID, need: Need): Res[ChannelCtx] =
     channels.access(id, s.user.id).map {
       case None => Left(AppError(ErrorCode.ChannelNotFound))
       case Some((c, m)) =>
@@ -39,11 +33,7 @@ final class Access2(
           }
     }
 
-  def message(
-    s: AuthSession,
-    id: UUID,
-    need: Need
-  ): Res[(ChannelCtx, MessageRow)] =
+  def message(s: AuthSession, id: UUID, need: Need): Res[(ChannelCtx, MessageRow)] =
     messages.find(id).flatMap {
       case None => IO.pure(Left(AppError(ErrorCode.MessageNotFound)))
       case Some(m) => channel(s, m.channelId, need).map {

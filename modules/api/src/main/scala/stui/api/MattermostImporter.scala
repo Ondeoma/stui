@@ -19,20 +19,15 @@ import java.util.UUID
  * 取り込んだものは import_map に記録し、もう一度実行しても二重に作らない（あとから増えた投稿だけを足す）。
  * チームは stui にないので、チームのチャンネルは同じ一覧に並べる（名前がぶつかったら「名前 (チーム名)」にする）。
  */
-final class MattermostImporter(
-  src: MattermostSource,
-  store: ImportStore,
-  blobs: Option[BlobStore],
-  log: String => IO[Unit]) {
+final class MattermostImporter(src: MattermostSource,
+                               store: ImportStore,
+                               blobs: Option[BlobStore],
+                               log: String => IO[Unit]) {
 
-  private def at(
-    ms: Long
-  ): Instant = Instant.ofEpochMilli(ms)
+  private def at(ms: Long): Instant = Instant.ofEpochMilli(ms)
   private val batch = 500
 
-  def run(
-    opts: MattermostImportOptions
-  ): IO[MattermostImportReport] =
+  def run(opts: MattermostImportOptions): IO[MattermostImportReport] =
     for {
       allTeams <- src.teams
       unknown = opts.teams.filterNot(t => allTeams.exists(_.name == t))
@@ -44,27 +39,17 @@ final class MattermostImporter(
     } yield report
 
   /** 書き込まずに、取り込む数を数える。 */
-  private def dryRun(
-    teams: List[MmTeam]
-  ): IO[MattermostImportReport] =
+  private def dryRun(teams: List[MmTeam]): IO[MattermostImportReport] =
     for {
       users <- src.users
       channels <- src.channels(teams.map(_.id))
       posts <- src.postCount
       _ <- log(s"チーム: ${teams.map(t => s"${t.displayName}（${t.name}）").mkString("、")}")
-      _ <- channels.groupBy(_.tpe).toList.sortBy(_._1).traverse_(
-        (
-          k,
-          cs
-        ) => log(s"チャンネル（$k）: ${cs.size}")
-      )
+      _ <- channels.groupBy(_.tpe).toList.sortBy(_._1).traverse_((k, cs) => log(s"チャンネル（$k）: ${cs.size}"))
       _ <- log(s"投稿（チーム外のものも含む）: $posts")
     } yield MattermostImportReport(users = users.size, channels = channels.size, posts = posts.toInt)
 
-  private def importAll(
-    teams: List[MmTeam],
-    opts: MattermostImportOptions
-  ): IO[MattermostImportReport] =
+  private def importAll(teams: List[MmTeam], opts: MattermostImportOptions): IO[MattermostImportReport] =
     for {
       u <- importUsers
       (users, mmUsers, r1) = u
@@ -106,13 +91,7 @@ final class MattermostImporter(
       }
       _ <- log(s"ユーザー: 新しく ${res.count(!_._3)}・既存の人に結び付け ${res.count(_._3)}・取り込み済み ${done.size}")
     } yield (
-      done ++ res.map(
-        (
-          s,
-          t,
-          _
-        ) => s -> t
-      ),
+      done ++ res.map((s, t, _) => s -> t),
       all,
       MattermostImportReport(users = res.count(!_._3), linkedUsers = res.count(_._3), skipped = done.size)
     )
@@ -122,10 +101,8 @@ final class MattermostImporter(
   /** 新しく加えたメンバーと、その人が取り込み元で最後にチャンネルを見た時刻（投稿のあとで既読の位置を合わせる）。 */
   private type Seen = List[(UUID, UUID, Instant)]
 
-  private def importChannels(
-    teams: List[MmTeam],
-    users: Map[String, UUID]
-  ): IO[(Map[String, UUID], Seen, MattermostImportReport)] =
+  private def importChannels(teams: List[MmTeam],
+                             users: Map[String, UUID]): IO[(Map[String, UUID], Seen, MattermostImportReport)] =
     for {
       done <- store.mapped("channel")
       channels <- src.channels(teams.map(_.id))
@@ -165,57 +142,28 @@ final class MattermostImporter(
         )
       )
       added <- rows.grouped(batch).toList.flatTraverse(g =>
-        store.addMembers(g.map(
-          (
-            c,
-            u,
-            a,
-            _
-          ) => (c, u, a)
-        ))
+        store.addMembers(g.map((c, u, a, _) => (c, u, a)))
       )
-      seen = rows.map(
-        (
-          c,
-          u,
-          _,
-          t
-        ) => (c, u) -> t
-      ).toMap
+      seen = rows.map((c, u, _, t) => (c, u) -> t).toMap
       _ <- log(s"チャンネル: 新しく ${created.size}・取り込み済み ${done.size}・メンバーを ${added.size} 人加えた")
     } yield (
       all,
-      added.flatMap(
-        (
-          c,
-          u
-        ) => seen.get((c, u)).map((c, u, _))
-      ),
+      added.flatMap((c, u) => seen.get((c, u)).map((c, u, _))),
       MattermostImportReport(channels = created.size, members = added.size, skipped = done.size)
     )
 
   /** 公開・非公開のチャンネルの名前は重複できないので、ぶつかったら「名前 (チーム名)」「名前 (2)」… にする。 */
-  private def uniqueName(
-    base: String,
-    team: Option[String]
-  ): IO[String] = {
+  private def uniqueName(base: String, team: Option[String]): IO[String] = {
     val name0 = if base.isEmpty then "mattermost" else base
     val candidates = LazyList(name0) ++ team.map(t => s"$name0 ($t)").to(LazyList) ++
       LazyList.from(2).map(n => s"$name0 ($n)")
-    def go(
-      cs: LazyList[String]
-    ): IO[String] = store.channelNameTaken(cs.head).ifM(go(cs.tail), IO.pure(cs.head))
+    def go(cs: LazyList[String]): IO[String] = store.channelNameTaken(cs.head).ifM(go(cs.tail), IO.pure(cs.head))
     go(candidates)
   }
 
   // ---------------------------------------------------------------- 投稿
 
-  private def importPosts(
-    channels: Map[String, UUID],
-    users: Map[String, UUID],
-    mmUsers: List[MmUser],
-    seen: Seen
-  )
+  private def importPosts(channels: Map[String, UUID], users: Map[String, UUID], mmUsers: List[MmUser], seen: Seen)
     : IO[MattermostImportReport] =
     for {
       names <- store.userNames(users.values.toList.distinct)
@@ -233,17 +181,8 @@ final class MattermostImporter(
           }
           val skipped = chunk.size - rows.size
           store.insertMessages(rows) *> posts.set(ids) *>
-            count.updateAndGet(
-              (
-                n,
-                s
-              ) => (n + rows.size, s + skipped)
-            ).flatMap(
-              (
-                n,
-                _
-              ) =>
-                log(s"投稿: $n 件").whenA(rows.nonEmpty && (n / 10000) != ((n - rows.size) / 10000))
+            count.updateAndGet((n, s) => (n + rows.size, s + skipped)).flatMap((n, _) =>
+              log(s"投稿: $n 件").whenA(rows.nonEmpty && (n / 10000) != ((n - rows.size) / 10000))
             )
         }
       }.compile.drain
@@ -254,13 +193,11 @@ final class MattermostImporter(
     } yield MattermostImportReport(posts = n, skipped = s)
 
   /** 取り込む投稿を stui のメッセージにする（取り込み済み・チャンネルを取り込まないもの・システムの投稿は None）。 */
-  private def convert(
-    p: MmPost,
-    channels: Map[String, UUID],
-    users: Map[String, UUID],
-    byName: Map[String, (UUID, String)],
-    known: Map[String, UUID]
-  ): Option[ImportMessage] =
+  private def convert(p: MmPost,
+                      channels: Map[String, UUID],
+                      users: Map[String, UUID],
+                      byName: Map[String, (UUID, String)],
+                      known: Map[String, UUID]): Option[ImportMessage] =
     if known.contains(p.id) || !Mattermost.importable(p.tpe) then None
     else
       channels.get(p.channelId).map { cid =>
@@ -292,19 +229,13 @@ final class MattermostImporter(
 
   // ---------------------------------------------------------------- リアクション
 
-  private def importReactions(
-    users: Map[String, UUID]
-  ): IO[MattermostImportReport] =
+  private def importReactions(users: Map[String, UUID]): IO[MattermostImportReport] =
     for {
       posts <- store.mapped("post")
       n <- src.reactions.chunkN(batch).evalMap { chunk =>
         store.addReactions(chunk.toList.flatMap(r =>
-          (posts.get(r.postId), users.get(r.userId), Mattermost.reaction(r.emoji)).mapN(
-            (
-              m,
-              u,
-              e
-            ) => (m, u, e, at(r.createAt))
+          (posts.get(r.postId), users.get(r.userId), Mattermost.reaction(r.emoji)).mapN((m, u, e) =>
+            (m, u, e, at(r.createAt))
           )
         ))
       }.compile.foldMonoid
@@ -313,10 +244,7 @@ final class MattermostImporter(
 
   // ---------------------------------------------------------------- 添付ファイル・カスタム絵文字（ファイルの置き場所を指定したとき）
 
-  private def importFiles(
-    dir: Path,
-    users: Map[String, UUID]
-  ): IO[MattermostImportReport] = blobs match {
+  private def importFiles(dir: Path, users: Map[String, UUID]): IO[MattermostImportReport] = blobs match {
     case None => log("添付ファイル: S3 が未設定のため取り込みません").as(MattermostImportReport())
     case Some(bs) =>
       for {
@@ -330,10 +258,7 @@ final class MattermostImporter(
           ) match {
             case (Some(mid), Some(path)) =>
               store.messageInfo(mid).flatMap(_.traverse {
-                (
-                  cid,
-                  created
-                ) =>
+                (cid, created) =>
                   val key = s"channels/$cid/${UUID.randomUUID()}"
                   val mime = Option(
                     f.mime.takeWhile(_ != ';').trim.toLowerCase
@@ -362,10 +287,7 @@ final class MattermostImporter(
       } yield MattermostImportReport(files = res._1, missingFiles = res._2)
   }
 
-  private def importEmoji(
-    dir: Path,
-    users: Map[String, UUID]
-  ): IO[MattermostImportReport] = blobs match {
+  private def importEmoji(dir: Path, users: Map[String, UUID]): IO[MattermostImportReport] = blobs match {
     case None => IO.pure(MattermostImportReport())
     case Some(bs) =>
       for {
@@ -390,16 +312,12 @@ final class MattermostImporter(
   }
 
   /** 画像の種類（先頭のバイトで見分ける）。 */
-  private def imageType(
-    p: Path
-  ): Option[String] =
+  private def imageType(p: Path): Option[String] =
     Option.when(Files.isRegularFile(p))(p).flatMap { f =>
       val in = Files.newInputStream(f)
       val h = try in.readNBytes(12)
       finally in.close()
-      def starts(
-        bs: Int*
-      ) = h.length >= bs.size && bs.indices.forall(i => (h(i) & 0xff) == bs(i))
+      def starts(bs: Int*) = h.length >= bs.size && bs.indices.forall(i => (h(i) & 0xff) == bs(i))
       if starts(0x89, 0x50, 0x4e, 0x47) then Some("image/png")
       else if starts(0xff, 0xd8, 0xff) then Some("image/jpeg")
       else if starts(0x47, 0x49, 0x46) then Some("image/gif")

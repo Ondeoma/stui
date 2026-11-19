@@ -9,24 +9,16 @@ import org.flywaydb.core.Flyway
 
 import scala.concurrent.duration.*
 
-final case class DbConfig(
-  url: String,
-  user: String,
-  password: String,
-  maxPoolSize: Int = 10)
+final case class DbConfig(url: String, user: String, password: String, maxPoolSize: Int = 10)
 
 object Database {
 
-  def migrate(
-    cfg: DbConfig
-  ): IO[Int] =
+  def migrate(cfg: DbConfig): IO[Int] =
     IO.blocking {
       Flyway.configure().dataSource(cfg.url, cfg.user, cfg.password).load().migrate().migrationsExecuted
     }
 
-  def transactor(
-    cfg: DbConfig
-  ): Resource[IO, HikariTransactor[IO]] = {
+  def transactor(cfg: DbConfig): Resource[IO, HikariTransactor[IO]] = {
     val hc = new HikariConfig()
     hc.setJdbcUrl(cfg.url)
     hc.setUsername(cfg.user)
@@ -48,13 +40,7 @@ object Database {
 object Periodic {
 
   /** initialDelay 待ってから action を動かし、以後 every ごとに繰り返す。失敗しても止めず、code を付けてログに出す。 */
-  def run(
-    initialDelay: FiniteDuration,
-    every: FiniteDuration,
-    code: ErrorCode
-  )(
-    action: IO[Any]
-  ): IO[Nothing] =
+  def run(initialDelay: FiniteDuration, every: FiniteDuration, code: ErrorCode)(action: IO[Any]): IO[Nothing] =
     IO.sleep(initialDelay) *>
       (action.void.handleErrorWith(e => sbirds.observe.Log.report(code, e.toString, e)) *> IO.sleep(every)).foreverM
 }
@@ -71,7 +57,5 @@ enum OutboxResult {
 object Outbox {
 
   /** 失敗 n 回目の再試行までの秒数（30秒から倍々、最大1時間）。 */
-  def backoffSeconds(
-    n: Int
-  ): Int = math.min(3600, 30 * (1 << math.min(n, 7)))
+  def backoffSeconds(n: Int): Int = math.min(3600, 30 * (1 << math.min(n, 7)))
 }

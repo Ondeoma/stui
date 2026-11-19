@@ -12,21 +12,15 @@ private object Popup {
 
   def isOpen: Boolean = open > 0
 
-  private def text(
-    v: js.Dynamic
-  ): Option[String] = Option(v).filterNot(js.isUndefined).map(_.toString).filter(_.nonEmpty)
+  private def text(v: js.Dynamic): Option[String] =
+    Option(v).filterNot(js.isUndefined).map(_.toString).filter(_.nonEmpty)
 
-  def render(
-    emptyText: String
-  ): js.Function0[js.Object] = () => {
+  def render(emptyText: String): js.Function0[js.Object] = () => {
     var box: Option[dom.HTMLElement] = None
     var items = js.Array[js.Dynamic]()
     var selected = 0
     var command: js.Dynamic = null
-    def span(
-      cls: String,
-      t: String = ""
-    ): dom.HTMLElement = {
+    def span(cls: String, t: String = ""): dom.HTMLElement = {
       val s = dom.document.createElement("span").asInstanceOf[dom.HTMLElement]
       if (cls.nonEmpty) s.className = cls
       if (t.nonEmpty) s.textContent = t
@@ -40,10 +34,7 @@ private object Popup {
         e.textContent = emptyText
         bx.appendChild(e)
       } else items.zipWithIndex.foreach {
-        (
-          it,
-          i
-        ) =>
+        (it, i) =>
           val b = dom.document.createElement("button").asInstanceOf[dom.HTMLButtonElement]
           b.`type` = "button"
           b.className = "sk-mention-item" + (if (i == selected) " selected" else "")
@@ -59,9 +50,7 @@ private object Popup {
           if (i == selected) b.asInstanceOf[js.Dynamic].scrollIntoView(js.Dynamic.literal(block = "nearest"))
       }
     }
-    def place(
-      rect: js.Dynamic
-    ): Unit = box.foreach { bx =>
+    def place(rect: js.Dynamic): Unit = box.foreach { bx =>
       if (rect != null && !js.isUndefined(rect)) {
         val r = rect()
         if (r != null && !js.isUndefined(r)) {
@@ -81,9 +70,7 @@ private object Popup {
         }
       }
     }
-    def take(
-      props: js.Dynamic
-    ): Unit = {
+    def take(props: js.Dynamic): Unit = {
       items = props.items.asInstanceOf[js.Array[js.Dynamic]]; selected = 0; command = props.command
       draw(); place(props.clientRect)
     }

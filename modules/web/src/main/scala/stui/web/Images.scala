@@ -9,10 +9,7 @@ import scala.scalajs.js
 object Images {
 
   /** 画像を中央で正方形に切り取り、size px に縮める（アイコンの登録用）. GIF などで読めないときは元のファイルを返す. */
-  def squareThumb(
-    file: dom.File,
-    size: Int = 256
-  ): Future[dom.File] = {
+  def squareThumb(file: dom.File, size: Int = 256): Future[dom.File] = {
     val p = Promise[dom.File]()
     val url = dom.URL.createObjectURL(file)
     val img = dom.document.createElement("img").asInstanceOf[dom.HTMLImageElement]

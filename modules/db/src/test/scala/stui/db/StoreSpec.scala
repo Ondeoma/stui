@@ -26,20 +26,15 @@ class StoreSpec extends CatsEffectSuite {
 
   override def munitFixtures = if cfg.isDefined then List(xaFixture) else Nil
 
-  final case class Stores(
-    users: UserStore,
-    channels: ChannelStore,
-    messages: MessageStore,
-    search: SearchStore,
-    schedule: ScheduleStore,
-    activity: ActivityStore,
-    hooks: HookStore)
+  final case class Stores(users: UserStore,
+                          channels: ChannelStore,
+                          messages: MessageStore,
+                          search: SearchStore,
+                          schedule: ScheduleStore,
+                          activity: ActivityStore,
+                          hooks: HookStore)
 
-  private def withDb(
-    name: String
-  )(
-    body: Stores => IO[Unit]
-  ): Unit =
+  private def withDb(name: String)(body: Stores => IO[Unit]): Unit =
     test(name) {
       if cfg.isEmpty then IO(assume(false, "TEST_DATABASE_URL が未設定"))
       else {
@@ -57,22 +52,11 @@ class StoreSpec extends CatsEffectSuite {
       }
     }
 
-  private def user(
-    st: Stores,
-    name: String
-  ): IO[User] = st.users.upsert(s"test:${UUID.randomUUID()}", name, None, None)
+  private def user(st: Stores, name: String): IO[User] = st.users.upsert(s"test:${UUID.randomUUID()}", name, None, None)
 
-  private def uniq(
-    prefix: String
-  ) = prefix + "-" + UUID.randomUUID().toString.take(8)
+  private def uniq(prefix: String) = prefix + "-" + UUID.randomUUID().toString.take(8)
 
-  private def post(
-    st: Stores,
-    c: UUID,
-    u: UUID,
-    text: String,
-    root: Option[UUID] = None
-  ): IO[MessageRow] = {
+  private def post(st: Stores, c: UUID, u: UUID, text: String, root: Option[UUID] = None): IO[MessageRow] = {
     val doc = RichText.fromPlain(text)
     st.messages.insert(NewMessage(c, root, false, u, "user", "web", doc, RichText.toPlain(doc), Json.obj()))
   }
@@ -166,10 +150,7 @@ class StoreSpec extends CatsEffectSuite {
   }
 
   withDb("参加の変更履歴: チャンネルの作成・DM・メンバーの追加で、参加した人ごとに member.joined を残す") { st =>
-    def joined(
-      after: Long,
-      c: UUID
-    ) = st.messages.eventsAfter(after).map(_.filter(_._2 == c).flatMap(_._3).toSet)
+    def joined(after: Long, c: UUID) = st.messages.eventsAfter(after).map(_.filter(_._2 == c).flatMap(_._3).toSet)
     for {
       a <- user(st, "参加 A")
       b <- user(st, "参加 B")

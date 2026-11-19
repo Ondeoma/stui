@@ -251,14 +251,10 @@ object EmojiNames {
   )
 
   /** 名前（前後の : は付けない）から絵文字の文字。 */
-  def get(
-    name: String
-  ): Option[String] = names.get(name.trim.toLowerCase)
+  def get(name: String): Option[String] = names.get(name.trim.toLowerCase)
 
   /** ":name:" の形なら、絵文字の文字にする。知らない名前・その他の形は None。 */
-  def fromShortcode(
-    s: String
-  ): Option[String] = {
+  def fromShortcode(s: String): Option[String] = {
     val t = s.trim
     if (t.length > 2 && t.startsWith(":") && t.endsWith(":")) get(t.substring(1, t.length - 1)) else None
   }

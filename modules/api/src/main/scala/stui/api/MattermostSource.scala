@@ -7,8 +7,7 @@ import doobie.implicits.*
 import fs2.Stream
 
 /** Mattermost の DB を読む（読むだけ）。表・列の名前は Mattermost の PostgreSQL のもの（小文字）。消したもの（deleteat）は読まない。 */
-final class MattermostSource(
-  xa: Transactor[IO]) {
+final class MattermostSource(xa: Transactor[IO]) {
   private val chunk = 2000
 
   def teams: IO[List[MmTeam]] =
@@ -20,9 +19,7 @@ final class MattermostSource(
           from users u order by u.createat""".query[MmUser].to[List].transact(xa)
 
   /** チャンネル（teams が空ならすべてのチーム）。DM・グループ DM はチームに属さないので、いつも読む。 */
-  def channels(
-    teams: List[String]
-  ): IO[List[MmChannel]] = {
+  def channels(teams: List[String]): IO[List[MmChannel]] = {
     val inTeams = teams.toNel.fold(fr"true")(nel => Fragments.in(fr"teamid", nel) ++ fr"or teamid = ''")
     (fr"""select id, teamid, type, coalesce(displayname, name), coalesce(header, ''), coalesce(purpose, ''), coalesce(creatorid, ''),
                  createat, deleteat

@@ -23,10 +23,9 @@ object ImportMattermost extends IOApp {
       |取り込み元: MATTERMOST_DATABASE_URL・MATTERMOST_DATABASE_USER・MATTERMOST_DATABASE_PASSWORD
       |取り込み先: stui と同じ DATABASE_*・S3_*""".stripMargin
 
-  private def parseArgs(
-    args: List[String],
-    o: MattermostImportOptions = MattermostImportOptions()
-  ): Either[String, MattermostImportOptions] =
+  private def parseArgs(args: List[String],
+                        o: MattermostImportOptions =
+                          MattermostImportOptions()): Either[String, MattermostImportOptions] =
     args match {
       case Nil => Right(o)
       case "--team" :: t :: rest => parseArgs(rest, o.copy(teams = o.teams :+ t))
@@ -37,13 +36,10 @@ object ImportMattermost extends IOApp {
       case x :: _ => Left(s"分からない引数です: $x")
     }
 
-  private def env(
-    name: String
-  ): Either[String, String] = sys.env.get(name).map(_.trim).filter(_.nonEmpty).toRight(s"環境変数 $name を設定してください")
+  private def env(name: String): Either[String, String] =
+    sys.env.get(name).map(_.trim).filter(_.nonEmpty).toRight(s"環境変数 $name を設定してください")
 
-  def run(
-    args: List[String]
-  ): IO[ExitCode] =
+  def run(args: List[String]): IO[ExitCode] =
     (
       parseArgs(args),
       (env("MATTERMOST_DATABASE_URL"), env("MATTERMOST_DATABASE_USER"), env("MATTERMOST_DATABASE_PASSWORD")).tupled,
@@ -61,11 +57,7 @@ object ImportMattermost extends IOApp {
           } yield (srcXa, xa, blobs)
         (if opts.dryRun then IO.unit else Database.migrate(target).void) *>
           resources.use {
-            (
-              srcXa,
-              xa,
-              blobs
-            ) =>
+            (srcXa, xa, blobs) =>
               new MattermostImporter(new MattermostSource(srcXa), new ImportStore(xa, "mattermost"), blobs, IO.println)
                 .run(opts).flatMap { r =>
                   IO.println(

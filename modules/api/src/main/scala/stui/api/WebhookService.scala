@@ -23,17 +23,14 @@ import scala.concurrent.duration.*
  * Webhook。受信は Slack・Mattermost と同じ形の JSON（text・username・icon_url・attachments）でチャンネルに投稿する。
  * 送信はイベントを JSON で POST し（HMAC-SHA256 の署名付き）、応答に text があればボットとして返信する。
  */
-final class WebhookService(
-  hooks: HookStore,
-  users: UserStore,
-  channels: ChannelStore,
-  chat: ChatService,
-  http: Client[IO],
-  cfg: ApiConfig) {
+final class WebhookService(hooks: HookStore,
+                           users: UserStore,
+                           channels: ChannelStore,
+                           chat: ChatService,
+                           http: Client[IO],
+                           cfg: ApiConfig) {
 
-  def validUrl(
-    u: String
-  ): Either[AppError, String] = {
+  def validUrl(u: String): Either[AppError, String] = {
     val t = u.trim
     if t.startsWith("https://") || (cfg.webhookAllowHttp && t.startsWith("http://")) then
       Uri.fromString(t).left.map(_ => AppError(ErrorCode.WebhookUrlInvalid)).map(_ => t)
@@ -44,16 +41,10 @@ final class WebhookService(
       ))
   }
 
-  private def str(
-    c: ACursor,
-    k: String
-  ): Option[String] = c.get[String](k).toOption.map(_.trim).filter(_.nonEmpty)
+  private def str(c: ACursor, k: String): Option[String] = c.get[String](k).toOption.map(_.trim).filter(_.nonEmpty)
 
   /** 受信の Webhook の投稿。 */
-  def receive(
-    h: IncomingRow,
-    payload: Json
-  ): Res[MessageDto] = {
+  def receive(h: IncomingRow, payload: Json): Res[MessageDto] = {
     val md = SlackPayload.toMarkdown(payload)
     if md.trim.isEmpty then IO.pure(Left(AppError(ErrorCode.WebhookTextRequired)))
     else
@@ -91,10 +82,7 @@ final class WebhookService(
   }
 
   /** 送信の応答に text があれば返信する（response_type が comment ならスレッドに）。 */
-  private def reply(
-    d: DeliveryRow,
-    body: String
-  ): IO[Unit] =
+  private def reply(d: DeliveryRow, body: String): IO[Unit] =
     parse(body).toOption.filter(_ => d.event == EventKind.MessageCreated).traverse_ { j =>
       val c = j.hcursor
       str(c, "text").traverse_ { text =>
@@ -129,9 +117,7 @@ final class WebhookService(
    * 送信先が内部のネットワーク（ループバック・プライベート・リンクローカルなど）でないか。名前を引いた結果のすべての IP で確かめる。
    * 開発では WEBHOOK_ALLOW_PRIVATE=true で許す。
    */
-  def publicHost(
-    url: String
-  ): IO[Boolean] =
+  def publicHost(url: String): IO[Boolean] =
     if cfg.webhookAllowPrivate then IO.pure(true)
     else
       Uri.fromString(url).toOption.flatMap(_.host).map(_.value.stripPrefix("[").stripSuffix("]")) match {
@@ -146,17 +132,12 @@ final class WebhookService(
           }).handleError(_ => false)
       }
 
-  def send(
-    d: DeliveryRow
-  ): IO[(OutboxResult, Option[Int])] =
+  def send(d: DeliveryRow): IO[(OutboxResult, Option[Int])] =
     publicHost(d.url).flatMap {
       case false => IO.pure((OutboxResult.Skip("送信先が内部のネットワークのため送りませんでした"), None))
       case true => sbirds.observe.Telemetry.span("webhook.deliver", "webhook.event" -> d.event)(deliver(d))
     }.flatTap {
-      (
-        r,
-        _
-      ) =>
+      (r, _) =>
         val result = r match {
           case OutboxResult.Sent => "sent"
           case _: OutboxResult.Retry => "retry"
@@ -169,9 +150,7 @@ final class WebhookService(
    * 送る要求。本文は payload.noSpaces そのもので、署名もこの本文で計算する。
    * CirceEntityCodec を import しているので、文字のエンコーダーを明示しないと本文が JSON の文字列（"{\"event\":...}"）になる。
    */
-  def request(
-    d: DeliveryRow
-  ): Request[IO] = {
+  def request(d: DeliveryRow): Request[IO] = {
     val body = d.payload.noSpaces
     val sig = "sha256=" + Crypto.hmacHex(d.secret, body.getBytes(StandardCharsets.UTF_8))
     Request[IO](Method.POST, Uri.unsafeFromString(d.url))
@@ -185,9 +164,7 @@ final class WebhookService(
       )
   }
 
-  private def deliver(
-    d: DeliveryRow
-  ): IO[(OutboxResult, Option[Int])] = {
+  private def deliver(d: DeliveryRow): IO[(OutboxResult, Option[Int])] = {
     val req = request(d)
     http.run(req).use(r =>
       r.body.take(65536).through(fs2.text.utf8.decode).compile.string.map(r.status.code -> _)

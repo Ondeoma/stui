@@ -9,9 +9,7 @@ import java.security.MessageDigest
 object BlobHash {
 
   /** ファイルの SHA-256（16進）。 */
-  def sha256Hex(
-    p: Path
-  ): IO[String] = IO.blocking {
+  def sha256Hex(p: Path): IO[String] = IO.blocking {
     val md = MessageDigest.getInstance("SHA-256")
     val in = java.nio.file.Files.newInputStream(p.toNioPath)
     try {

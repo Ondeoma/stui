@@ -14,14 +14,13 @@ import stui.shared.*
 import java.util.UUID
 
 /** Webhook の管理と受信。 */
-final class HookRoutes(
-  hooks: HookStore,
-  svc: WebhookService,
-  channels: ChannelStore,
-  activity: ActivityStore,
-  val sessions: SessionAuth,
-  val access: Access2,
-  cfg: ApiConfig) extends RouteSupport {
+final class HookRoutes(hooks: HookStore,
+                       svc: WebhookService,
+                       channels: ChannelStore,
+                       activity: ActivityStore,
+                       val sessions: SessionAuth,
+                       val access: Access2,
+                       cfg: ApiConfig) extends RouteSupport {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     // ---------------------------------------------------------------- 受信（トークンだけで投稿できる）
@@ -39,10 +38,7 @@ final class HookRoutes(
       getHooksOutgoingDeliveries(req, id)
   }
 
-  private def postHookByToken(
-    req: Request[IO],
-    token: String
-  ): IO[Response[IO]] =
+  private def postHookByToken(req: Request[IO], token: String): IO[Response[IO]] =
     hooks.incomingByToken(Crypto.sha256(token)).flatMap {
       case Some(h) if h.enabled =>
         payload(req).flatMap {
@@ -52,9 +48,7 @@ final class HookRoutes(
       case _ => err(ErrorCode.WebhookNotFound)
     }
 
-  private def getHooksIncoming(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getHooksIncoming(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       manageable(s).flatMap { ids =>
         val filter = param(req, "channelId").flatMap(uuidOpt).map(c => ids.fold(List(c))(_.filter(_ == c)))
@@ -62,9 +56,7 @@ final class HookRoutes(
       }
     )
 
-  private def postHooksIncoming(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postHooksIncoming(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       body[IncomingHookReq](req)(r =>
         validIncoming(r) match {
@@ -89,10 +81,7 @@ final class HookRoutes(
       )
     )
 
-  private def putHooksIncoming(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def putHooksIncoming(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(s =>
       body[IncomingHookReq](req)(r =>
         hooks.incomingRow(id).flatMap {
@@ -108,10 +97,7 @@ final class HookRoutes(
       )
     )
 
-  private def postHooksIncomingToken(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def postHooksIncomingToken(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(s =>
       hooks.incomingRow(id).flatMap {
         case None => err(ErrorCode.WebhookNotFound)
@@ -132,10 +118,7 @@ final class HookRoutes(
       }
     )
 
-  private def deleteHooksIncoming(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def deleteHooksIncoming(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(s =>
       hooks.incomingRow(id).flatMap {
         case None => err(ErrorCode.WebhookNotFound)
@@ -151,14 +134,10 @@ final class HookRoutes(
       }
     )
 
-  private def getHooksOutgoing(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getHooksOutgoing(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s => manageable(s).flatMap(ids => hooks.outgoing(ids).flatMap(Ok(_))))
 
-  private def postHooksOutgoing(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postHooksOutgoing(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       body[OutgoingHookReq](req)(r =>
         checkOutgoing(s, r) {
@@ -177,10 +156,7 @@ final class HookRoutes(
       )
     )
 
-  private def putHooksOutgoing(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def putHooksOutgoing(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(s =>
       body[OutgoingHookReq](req)(r =>
         hooks.outgoingRow(id).flatMap {
@@ -193,10 +169,7 @@ final class HookRoutes(
       )
     )
 
-  private def deleteHooksOutgoing(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def deleteHooksOutgoing(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(s =>
       hooks.outgoingRow(id).flatMap {
         case None => err(ErrorCode.WebhookNotFound)
@@ -212,10 +185,7 @@ final class HookRoutes(
       }
     )
 
-  private def getHooksOutgoingDeliveries(
-    req: Request[IO],
-    id: UUID
-  ): IO[Response[IO]] =
+  private def getHooksOutgoingDeliveries(req: Request[IO], id: UUID): IO[Response[IO]] =
     authed(req)(s =>
       hooks.outgoingRow(id).flatMap {
         case None => err(ErrorCode.WebhookNotFound)
@@ -226,30 +196,20 @@ final class HookRoutes(
       }
     )
 
-  private def incomingUrl(
-    token: String
-  ): String = s"${cfg.publicUrl}/hooks/$token"
+  private def incomingUrl(token: String): String = s"${cfg.publicUrl}/hooks/$token"
 
   /** 自分が管理できるチャンネル（システム管理者は None = すべて）。 */
-  private def manageable(
-    s: AuthSession
-  ): IO[Option[List[UUID]]] =
+  private def manageable(s: AuthSession): IO[Option[List[UUID]]] =
     if s.canAdmin then IO.pure(None)
     else channels.listForUser(s.user.id).map(cs => Some(cs.filter(_.role.contains(ChannelRole.Admin)).map(_.id)))
 
-  private def validName(
-    n: String
-  ): Option[String] = Option.when(n.trim.isEmpty)("名前を入力してください")
+  private def validName(n: String): Option[String] = Option.when(n.trim.isEmpty)("名前を入力してください")
 
-  private def validIncoming(
-    r: IncomingHookReq
-  ): Option[String] =
+  private def validIncoming(r: IncomingHookReq): Option[String] =
     validName(r.name).orElse(r.iconEmoji.filterNot(HookIcons.valid).map(_ => "選べるアイコンから選んでください"))
 
   /** 受信の Webhook の本文（JSON、または payload=JSON のフォーム）。 */
-  private def payload(
-    req: Request[IO]
-  ): IO[Option[Json]] =
+  private def payload(req: Request[IO]): IO[Option[Json]] =
     req.bodyText.compile.string.map { t =>
       parse(t).toOption.orElse(
         UrlForm.decodeString(Charset.`UTF-8`)(t).toOption.flatMap(_.getFirst("payload")).flatMap(p => parse(p).toOption)
@@ -257,22 +217,12 @@ final class HookRoutes(
     }
 
   /** 送信の Webhook を扱えるか（全体のものはシステム管理者、チャンネルのものはそのチャンネルの管理者）。 */
-  private def checkOutgoing(
-    s: AuthSession,
-    r: OutgoingHookReq
-  )(
-    f: => IO[Response[IO]]
-  ): IO[Response[IO]] =
+  private def checkOutgoing(s: AuthSession, r: OutgoingHookReq)(f: => IO[Response[IO]]): IO[Response[IO]] =
     svc.publicHost(r.url).flatMap(ok =>
       if !ok then err(ErrorCode.WebhookPrivateNetwork) else checkOutgoing0(s, r)(f)
     )
 
-  private def checkOutgoing0(
-    s: AuthSession,
-    r: OutgoingHookReq
-  )(
-    f: => IO[Response[IO]]
-  ): IO[Response[IO]] =
+  private def checkOutgoing0(s: AuthSession, r: OutgoingHookReq)(f: => IO[Response[IO]]): IO[Response[IO]] =
     validName(r.name).orElse(svc.validUrl(r.url).left.toOption.map(_.message))
       .orElse(r.events.find(e => !EventKind.webhook.contains(e)).map(e => s"使えないイベントです: $e")) match {
       case Some(e) => err(ErrorCode.WebhookInvalid, e)

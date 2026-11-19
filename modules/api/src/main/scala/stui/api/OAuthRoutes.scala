@@ -19,12 +19,11 @@ import java.time.Instant
  * 発行するトークンは、そのユーザーの API キー（「<クライアント名> 連携」。スコープはクライアントに許したもののうち求められたもの。
  * API キーの画面から失効できる）。連携サービスはこのトークンで通知を送り（POST /api/apps/notify）、メッセージの概要を読む。
  */
-final class OAuthRoutes(
-  oauth: OAuthStore,
-  activity: ActivityStore,
-  val sessions: SessionAuth,
-  val access: Access2,
-  cfg: ApiConfig)
+final class OAuthRoutes(oauth: OAuthStore,
+                        activity: ActivityStore,
+                        val sessions: SessionAuth,
+                        val access: Access2,
+                        cfg: ApiConfig)
   extends RouteSupport {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
@@ -34,9 +33,7 @@ final class OAuthRoutes(
     case req @ POST -> Root / "oauth" / "revoke" => postOauthRevoke(req)
   }
 
-  private def getOauthAuthorize(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getOauthAuthorize(req: Request[IO]): IO[Response[IO]] =
     validate(param(req, _)) match {
       case Left(r) => r
       case Right((c, _, _, _)) =>
@@ -92,9 +89,7 @@ final class OAuthRoutes(
         }
     }
 
-  private def postOauthAuthorize(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postOauthAuthorize(req: Request[IO]): IO[Response[IO]] =
     req.as[UrlForm].flatMap { u =>
       val p = (k: String) => u.getFirst(k).map(_.trim).filter(_.nonEmpty)
       validate(p) match {
@@ -121,9 +116,7 @@ final class OAuthRoutes(
       }
     }
 
-  private def postOauthToken(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postOauthToken(req: Request[IO]): IO[Response[IO]] =
     basicClient(req) match {
       case None => oauthError(Status.Unauthorized, "invalid_client", "クライアントの認証に失敗しました")
       case Some(c) =>
@@ -170,9 +163,7 @@ final class OAuthRoutes(
         }
     }
 
-  private def postOauthRevoke(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postOauthRevoke(req: Request[IO]): IO[Response[IO]] =
     basicClient(req) match {
       case None => oauthError(Status.Unauthorized, "invalid_client", "クライアントの認証に失敗しました")
       case Some(c) => form(req)(f =>
@@ -183,19 +174,12 @@ final class OAuthRoutes(
   private val CodeTtlSeconds = 60L
   private val CsrfCookie = "stui_oauth_csrf"
 
-  private def client(
-    id: String
-  ): Option[OAuthClient] = cfg.oauthClients.find(_.id == id)
+  private def client(id: String): Option[OAuthClient] = cfg.oauthClients.find(_.id == id)
 
-  private def enc(
-    s: String
-  ): String = java.net.URLEncoder.encode(s, "UTF-8")
+  private def enc(s: String): String = java.net.URLEncoder.encode(s, "UTF-8")
 
   /** redirect_uri に結果を付けて戻す。 */
-  private def back(
-    uri: String,
-    params: (String, Option[String])*
-  ): IO[Response[IO]] = {
+  private def back(uri: String, params: (String, Option[String])*): IO[Response[IO]] = {
     val q = params.collect { case (k, Some(v)) => s"$k=${enc(v)}" }.mkString("&")
     IO.pure(Response[IO](Status.Found).putHeaders(Location(Uri.unsafeFromString(uri +
       (if uri.contains("?") then "&" else "?") + q))))
@@ -207,10 +191,7 @@ final class OAuthRoutes(
    * 許可の画面。CSP の form-action は付けない（フォームの送信後のリダイレクトの連鎖にも効くため、
    * 連携元が callback の後に別の origin へ戻すと止まる）。CSRF は Cookie と hidden の値の照合で防ぐ。
    */
-  private def page(
-    title: String,
-    body: String
-  ): IO[Response[IO]] = {
+  private def page(title: String, body: String): IO[Response[IO]] = {
     val html =
       s"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
          |<title>${Html.escape(title)} | stui</title><style>
@@ -231,9 +212,7 @@ final class OAuthRoutes(
     ))
   }
 
-  private def errorPage(
-    msg: String
-  ): IO[Response[IO]] =
+  private def errorPage(msg: String): IO[Response[IO]] =
     page(
       "認可できません",
       s"<h1>認可できません</h1><p>${Html.escape(msg)}</p><p class=\"muted\">連携元のサービスの設定を確認してください。</p>"
@@ -241,19 +220,15 @@ final class OAuthRoutes(
 
   /** 認可の要求の確認（client_id・redirect_uri が不正ならリダイレクトしない）。 */
   /** 求められたスコープ（なければ read）。クライアントに許していないものが含まれていれば None。 */
-  private def scopes(
-    c: OAuthClient,
-    requested: Option[String]
-  ): Option[List[String]] = {
+  private def scopes(c: OAuthClient, requested: Option[String]): Option[List[String]] = {
     val rs = requested.map(
       _.split(' ').map(_.trim).filter(_.nonEmpty).toList.distinct
     ).filter(_.nonEmpty).getOrElse(List("read"))
     Option.when(rs.forall(c.scopes.contains))(rs)
   }
 
-  private def validate(
-    p: String => Option[String]
-  ): Either[IO[Response[IO]], (OAuthClient, String, Option[String], String)] =
+  private def validate(p: String => Option[String])
+    : Either[IO[Response[IO]], (OAuthClient, String, Option[String], String)] =
     (p("client_id").flatMap(client), p("redirect_uri")) match {
       case (None, _) => Left(errorPage("登録されていないクライアントです（client_id）"))
       case (Some(c), r) if !r.contains(c.redirectUri) => Left(errorPage("戻り先（redirect_uri）が登録されたものと一致しません"))
@@ -277,33 +252,18 @@ final class OAuthRoutes(
 
   // ---------------------------------------------------------------- トークンの発行・失効（クライアント認証は Basic）
 
-  private def oauthError(
-    status: Status,
-    code: String,
-    desc: String
-  ): IO[Response[IO]] =
+  private def oauthError(status: Status, code: String, desc: String): IO[Response[IO]] =
     IO.pure(Response[IO](status).withEntity(Json.obj("error" -> code.asJson, "error_description" -> desc.asJson))
       .putHeaders("Cache-Control" -> "no-store", "Pragma" -> "no-cache").putHeaders(
         (if status == Status.Unauthorized then List[Header.ToRaw]("WWW-Authenticate" -> "Basic realm=\"stui\"")
          else Nil)*
       ))
 
-  private def basicClient(
-    req: Request[IO]
-  ): Option[OAuthClient] =
+  private def basicClient(req: Request[IO]): Option[OAuthClient] =
     req.headers.get[Authorization].collect { case Authorization(BasicCredentials(id, secret)) => (id, secret) }
-      .flatMap(
-        (
-          id,
-          secret
-        ) => client(id).filter(c => Crypto.constantTimeEquals(c.secret, secret))
-      )
+      .flatMap((id, secret) => client(id).filter(c => Crypto.constantTimeEquals(c.secret, secret)))
 
-  private def form(
-    req: Request[IO]
-  )(
-    f: Map[String, String] => IO[Response[IO]]
-  ): IO[Response[IO]] =
+  private def form(req: Request[IO])(f: Map[String, String] => IO[Response[IO]]): IO[Response[IO]] =
     req.as[UrlForm].attempt.flatMap {
       case Left(_) => oauthError(Status.BadRequest, "invalid_request", "application/x-www-form-urlencoded で送ってください")
       case Right(u) => f(u.values.view.mapValues(_.headOption.getOrElse("")).toMap)

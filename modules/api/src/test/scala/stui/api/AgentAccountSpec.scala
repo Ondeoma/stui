@@ -34,8 +34,7 @@ class AgentAccountSpec extends CatsEffectSuite {
   override def munitFixtures = if cfg.isDefined then List(xaFixture) else Nil
 
   /** 本番と同じ組み立て（Main.scala）のうち、この流れで使うルートだけ。 */
-  private final class Env(
-    xa: doobie.Transactor[IO]) {
+  private final class Env(xa: doobie.Transactor[IO]) {
     val api = ApiConfig(Set.empty, false, "http://localhost", devLogin = true)
     val users = new UserStore(xa)
     val channels = new ChannelStore(xa)
@@ -62,13 +61,11 @@ class AgentAccountSpec extends CatsEffectSuite {
     val app: HttpApp[IO] = (rest <+> new McpRoutes(rest, sess, api.publicUrl).routes).orNotFound
 
     /** 呼ぶ。cookie はセッション、key は APIキー。 */
-    def call(
-      m: Method,
-      path: String,
-      body: Option[Json] = None,
-      cookie: Option[String] = None,
-      key: Option[String] = None
-    ): IO[(Status, Json)] = {
+    def call(m: Method,
+             path: String,
+             body: Option[Json] = None,
+             cookie: Option[String] = None,
+             key: Option[String] = None): IO[(Status, Json)] = {
       val r0 = Request[IO](m, Uri.unsafeFromString(path))
       val r1 = cookie.fold(r0)(c => r0.addCookie(api.cookieName, c))
       val r2 = key.fold(r1)(k => r1.putHeaders(Authorization(Credentials.Token(AuthScheme.Bearer, k))))
@@ -78,28 +75,18 @@ class AgentAccountSpec extends CatsEffectSuite {
     }
 
     /** 開発用のログインで Cookie のセッションを得る。 */
-    def login(
-      name: String,
-      admin: Boolean
-    ): IO[(String, UUID)] =
+    def login(name: String, admin: Boolean): IO[(String, UUID)] =
       app.run(Request[IO](
         Method.POST,
         uri"/auth/dev-login"
       ).withEntity(Json.obj("name" -> name.asJson, "admin" -> admin.asJson))).flatMap { r =>
         val c = r.cookies.find(_.name == api.cookieName).map(_.content).get
-        call(Method.GET, "/api/me", cookie = Some(c)).map(
-          (
-            _,
-            j
-          ) => c -> j.hcursor.get[UUID]("id").toOption.get
-        )
+        call(Method.GET, "/api/me", cookie = Some(c)).map((_, j) => c -> j.hcursor.get[UUID]("id").toOption.get)
       }
   }
 
-  private def str(
-    j: Json,
-    path: String*
-  ): String = path.foldLeft(j.hcursor: io.circe.ACursor)(_.downField(_)).as[String].getOrElse("")
+  private def str(j: Json, path: String*): String =
+    path.foldLeft(j.hcursor: io.circe.ACursor)(_.downField(_)).as[String].getOrElse("")
 
   test("管理者がエージェント専用アカウントを作り、キーで MCP・REST API を使う。取り消し・無効化で使えなくなる。ログインはできない") {
     if cfg.isEmpty then IO(assume(false, "TEST_DATABASE_URL が未設定"))

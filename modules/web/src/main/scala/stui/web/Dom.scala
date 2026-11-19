@@ -8,23 +8,15 @@ import scala.scalajs.js
 object Dom {
 
   /** 入力欄（input・select・textarea）の値. */
-  def value(
-    e: dom.Event
-  ): String = e.target.asInstanceOf[js.Dynamic].value.asInstanceOf[String]
+  def value(e: dom.Event): String = e.target.asInstanceOf[js.Dynamic].value.asInstanceOf[String]
 
-  def checked(
-    e: dom.Event
-  ): Boolean = e.target.asInstanceOf[dom.HTMLInputElement].checked
+  def checked(e: dom.Event): Boolean = e.target.asInstanceOf[dom.HTMLInputElement].checked
 
   /** 押した要素の下に、スクロールする枠（なければ画面）の端までどれだけ余白があるか（px）. メニューを上下どちらに開くかに使う. */
-  def spaceBelow(
-    e: dom.Event
-  ): Double = {
+  def spaceBelow(e: dom.Event): Double = {
     val el = e.currentTarget.asInstanceOf[dom.HTMLElement]
     val bottom = el.getBoundingClientRect().bottom
-    def scroller(
-      n: dom.HTMLElement
-    ): Option[dom.HTMLElement] =
+    def scroller(n: dom.HTMLElement): Option[dom.HTMLElement] =
       if (n == null) None
       else {
         val oy = dom.window.getComputedStyle(n).overflowY
@@ -35,10 +27,7 @@ object Dom {
     limit - bottom
   }
 
-  def copy(
-    text: String,
-    message: String = "コピーしました"
-  ): Unit = {
+  def copy(text: String, message: String = "コピーしました"): Unit = {
     dom.window.navigator.clipboard.writeText(text)
     Store.toast(message)
   }

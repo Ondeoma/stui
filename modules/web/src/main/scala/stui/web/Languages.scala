@@ -48,17 +48,9 @@ object Languages {
 
   /** エディタの言語の選択肢（[{id, label}]. 表示名の順）. */
   lazy val sorted: js.Array[js.Object] =
-    names.map(
-      (
-        id,
-        label
-      ) => js.Dynamic.literal(id = id, label = label).asInstanceOf[js.Object]
-    ).toJSArray
-      .sort(
-        (
-          a,
-          b
-        ) => a.asInstanceOf[js.Dynamic].label.localeCompare(b.asInstanceOf[js.Dynamic].label).asInstanceOf[Int]
+    names.map((id, label) => js.Dynamic.literal(id = id, label = label).asInstanceOf[js.Object]).toJSArray
+      .sort((a, b) =>
+        a.asInstanceOf[js.Dynamic].label.localeCompare(b.asInstanceOf[js.Dynamic].label).asInstanceOf[Int]
       )
 
 }

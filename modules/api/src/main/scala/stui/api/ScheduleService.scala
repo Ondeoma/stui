@@ -13,33 +13,28 @@ import java.util.UUID
 import scala.concurrent.duration.*
 
 /** リマインダー・定期メッセージの送信（全ノードで動かし、SKIP LOCKED で取り合う）。 */
-final class ScheduleService(
-  store: ScheduleStore,
-  messages: MessageStore,
-  channels: ChannelStore,
-  users: UserStore,
-  chat: ChatService,
-  notifier: NotifyService,
-  sessions: SessionAuth) {
+final class ScheduleService(store: ScheduleStore,
+                            messages: MessageStore,
+                            channels: ChannelStore,
+                            users: UserStore,
+                            chat: ChatService,
+                            notifier: NotifyService,
+                            sessions: SessionAuth) {
 
   /** stui 自身のボット（リマインダーの送り主）。 */
   def systemBot: IO[User] = users.bot("bot:stui", "stui リマインダー")
 
   /** 次の送信日時。 */
-  def nextRun(
-    freq: String,
-    runDate: Option[LocalDate],
-    runTime: String,
-    weekday: Option[Int],
-    monthday: Option[Int],
-    tz: String,
-    after: Instant = Instant.now()
-  ): Option[Instant] =
+  def nextRun(freq: String,
+              runDate: Option[LocalDate],
+              runTime: String,
+              weekday: Option[Int],
+              monthday: Option[Int],
+              tz: String,
+              after: Instant = Instant.now()): Option[Instant] =
     Recurrence.parseTime(runTime).flatMap(t => Recurrence.next(freq, runDate, t, weekday, monthday, Op.zone(tz), after))
 
-  private def fireReminder(
-    r: ReminderRow
-  ): IO[Unit] =
+  private def fireReminder(r: ReminderRow): IO[Unit] =
     for {
       bot <- systemBot
       dm <- channels.openDm(List(r.userId, bot.id))
@@ -77,9 +72,7 @@ final class ScheduleService(
       )
     } yield ()
 
-  private def sendScheduled(
-    r: ScheduledRow
-  ): IO[Option[String]] =
+  private def sendScheduled(r: ScheduledRow): IO[Option[String]] =
     sessions.sessionFor(r.authorId, AuthVia.System("schedule")).flatMap {
       case None => IO.pure(Some("作成した人が無効になっています"))
       case Some(s) => chat.post(s, r.channelId, PostMessageReq(r.body, r.rootId)).map(_.left.toOption.map(_.message))

@@ -8,10 +8,7 @@ package stui.core
  * 6xxx: ユーザー・カスタム絵文字・エージェント専用アカウント, 7xxx: プッシュ通知・リアルタイムの配信,
  * 9xxx: サーバー内部・バックグラウンドの処理.
  */
-enum ErrorCode(
-  val code: String,
-  val status: Int,
-  val message: String) extends sbirds.shared.ErrorCode {
+enum ErrorCode(val code: String, val status: Int, val message: String) extends sbirds.shared.ErrorCode {
   case ApiKeyReadOnly extends ErrorCode("STUI-1001", 403, "このAPIキーは参照専用です")
   case ApiKeyNeedsWrite extends ErrorCode("STUI-1002", 403, "このAPIキーは参照専用です（write スコープが必要です）")
   case OidcNotConfigured extends ErrorCode("STUI-1003", 503, "OIDC が設定されていません")

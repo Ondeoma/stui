@@ -12,21 +12,11 @@ import java.time.LocalDate
  */
 object SearchQuery {
 
-  final case class Filter(
-    key: String,
-    value: String,
-    negate: Boolean)
-  final case class Query(
-    filters: List[Filter],
-    text: List[String],
-    negText: List[String]) {
+  final case class Filter(key: String, value: String, negate: Boolean)
+  final case class Query(filters: List[Filter], text: List[String], negText: List[String]) {
     def isEmpty: Boolean = filters.isEmpty && text.isEmpty && negText.isEmpty
-    def values(
-      key: String
-    ): List[String] = filters.filter(f => f.key == key && !f.negate).map(_.value)
-    def negValues(
-      key: String
-    ): List[String] = filters.filter(f => f.key == key && f.negate).map(_.value)
+    def values(key: String): List[String] = filters.filter(f => f.key == key && !f.negate).map(_.value)
+    def negValues(key: String): List[String] = filters.filter(f => f.key == key && f.negate).map(_.value)
   }
 
   /** 使えるキー（別名を含む）。 */
@@ -61,9 +51,7 @@ object SearchQuery {
   val orderValues: Set[String] = Set("new", "old", "relevance", "score")
 
   /** 字句に分ける（"..." は1語）。 */
-  private[core] def tokens(
-    s: String
-  ): List[String] = {
+  private[core] def tokens(s: String): List[String] = {
     val out = List.newBuilder[String]
     val cur = new StringBuilder
     var inQ = false
@@ -79,9 +67,7 @@ object SearchQuery {
 
   private val FilterRe = """^(-?)([^\s:]+?)[:：](.*)$""".r
 
-  def parse(
-    s: String
-  ): Either[String, Query] = {
+  def parse(s: String): Either[String, Query] = {
     val filters = List.newBuilder[Filter]
     val text = List.newBuilder[String]
     val neg = List.newBuilder[String]
@@ -113,10 +99,7 @@ object SearchQuery {
   }
 
   /** 日付の値（today、-7d、-2w、-1m、2026-12-01）。 */
-  def date(
-    v: String,
-    today: LocalDate
-  ): Option[LocalDate] = {
+  def date(v: String, today: LocalDate): Option[LocalDate] = {
     val t = v.trim.toLowerCase
     if t == "today" || t == "今日" then Some(today)
     else if t == "yesterday" || t == "昨日" then Some(today.minusDays(1))
@@ -137,10 +120,7 @@ object SearchQuery {
   }
 
   /** during: の期間 [from, to)。`2026-11`（月）・`2026`（年）・日付・today・yesterday・-7d（その日から今日まで）。 */
-  def period(
-    v: String,
-    today: LocalDate
-  ): Option[(LocalDate, LocalDate)] = {
+  def period(v: String, today: LocalDate): Option[(LocalDate, LocalDate)] = {
     val t = v.trim.toLowerCase
     val month = """^(\d{4})-(\d{1,2})$""".r
     val year = """^(\d{4})$""".r
@@ -159,7 +139,5 @@ object SearchQuery {
   }
 
   /** 1つの語を PGroonga のクエリ構文のフレーズにする（構文の注入を防ぐ）。 */
-  def phrase(
-    w: String
-  ): String = "\"" + w.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+  def phrase(w: String): String = "\"" + w.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }

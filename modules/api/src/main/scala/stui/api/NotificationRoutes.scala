@@ -10,10 +10,8 @@ import stui.shared.*
 import java.time.Instant
 
 /** 画面内の通知。 */
-final class NotificationRoutes(
-  activity: ActivityStore,
-  val sessions: SessionAuth,
-  val access: Access2) extends RouteSupport {
+final class NotificationRoutes(activity: ActivityStore, val sessions: SessionAuth, val access: Access2)
+  extends RouteSupport {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case req @ GET -> Root / "api" / "notifications" => getNotifications(req)
@@ -22,9 +20,7 @@ final class NotificationRoutes(
     case req @ POST -> Root / "api" / "notifications" / "read-all" => postNotificationsReadAll(req)
   }
 
-  private def getNotifications(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getNotifications(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       activity.list(
         s.user.id,
@@ -35,19 +31,13 @@ final class NotificationRoutes(
       ).flatMap(Ok(_))
     )
 
-  private def getNotificationsUnread(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def getNotificationsUnread(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s => activity.unread(s.user.id).flatMap(Ok(_)))
 
-  private def postNotificationsRead(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postNotificationsRead(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s => body[MarkReadReq](req)(r => activity.markRead(s.user.id, r.ids.take(500)) *> NoContent()))
 
-  private def postNotificationsReadAll(
-    req: Request[IO]
-  ): IO[Response[IO]] =
+  private def postNotificationsReadAll(req: Request[IO]): IO[Response[IO]] =
     authed(req)(s =>
       body[Json](req)(j =>
         activity.markAllRead(
@@ -57,9 +47,7 @@ final class NotificationRoutes(
       )
     )
 
-  private def kinds(
-    req: Request[IO]
-  ): List[String] =
+  private def kinds(req: Request[IO]): List[String] =
     param(req, "kinds").toList.flatMap(_.split(',').map(_.trim).filter(NotificationKind.all.contains))
 
 }
