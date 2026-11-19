@@ -2,6 +2,7 @@ package stui.core
 
 import io.circe.Json
 import io.circe.parser.parse
+import stui.shared.HookIcons
 
 import java.time.{LocalDate, LocalTime, ZoneId}
 import java.util.UUID
@@ -108,6 +109,31 @@ class CoreSpec extends munit.FunSuite:
       """<p>見て <a href="https://example.com/a?b=1&amp;c=2" target="_blank" rel="noopener noreferrer nofollow">https://example.com/a?b=1&amp;c=2</a>。 `x`</p>""")
   }
 
+  test("RichText: Markdown のバックスラッシュエスケープ") {
+    def html(md: String) = RichText.toHtml(RichText.fromMarkdown(md))
+    assertEquals(html("\\#general a\\*b\\* \\_x\\_ \\[l\\](u) \\<y\\> \\!\\|\\~\\~z\\~\\~ \\\\"), "<p>#general a*b* _x_ [l](u) &lt;y&gt; !|~~z~~ \\</p>")
+    // 行頭の記号も見出し・箇条書き・引用にしない
+    assertEquals(html("\\# 題\n\n\\- a\n\n\\> b\n\n1\\. c"), "<p># 題</p><p>- a</p><p>&gt; b</p><p>1. c</p>")
+    // 記号でない文字の前の \ とコードの中の \ は残す
+    assertEquals(html("C:\\path\\日本 `a\\*b` \\`x`"), "<p>C:\\path\\日本 <code>a\\*b</code> `x`</p>")
+    // 記法の中のエスケープ
+    assertEquals(html("**a\\*b** *c\\*d* [x\\]y](https://e.example/\\(1\\))"),
+      """<p><strong>a*b</strong> <em>c*d</em> <a href="https://e.example/(1)" target="_blank" rel="noopener noreferrer nofollow">x]y</a></p>""")
+    assertEquals(RichText.toPlain(RichText.fromMarkdown("- \\[ \\] 名前\\_1")), "[ ] 名前_1")
+  }
+
+  test("HookIcons: icon_emoji の :name: を絵文字にし、描けないものは描かない") {
+    assertEquals(HookIcons.normalize(":large_green_circle:"), "🟢")
+    assertEquals(HookIcons.normalize(":red_circle:"), "🔴")
+    assertEquals(HookIcons.normalize(" 🚨 "), "🚨")
+    assertEquals(HookIcons.normalize(":unknown_name:"), ":unknown_name:")
+    assert(HookIcons.drawable("🟢"))
+    assert(HookIcons.drawable("⚠️"))
+    assert(!HookIcons.drawable(":unknown_name:"))
+    assert(!HookIcons.drawable("green_circle:"))
+    assert(!HookIcons.drawable(""))
+  }
+
   test("RichText: 太字の中のリンク") {
     assertEquals(RichText.toHtml(RichText.fromMarkdown("**[題](https://x.example)** 本文")),
       """<p><strong><a href="https://x.example" target="_blank" rel="noopener noreferrer nofollow">題</a></strong> 本文</p>""")
@@ -126,7 +152,7 @@ class CoreSpec extends munit.FunSuite:
 
   test("RichText: 閉じない記号が続く長い Markdown でも時間がかからない・外部の画像は出さない") {
     val t0 = System.nanoTime()
-    List("[", "<http://", "*a", "**").foreach(p => RichText.fromMarkdown(p * (RichText.MaxMarkdown / p.length)))
+    List("[", "<http://", "*a", "**", "`a``", "\\*").foreach(p => RichText.fromMarkdown(p * (RichText.MaxMarkdown / p.length)))
     assert((System.nanoTime() - t0) / 1000000 < 3000, "fromMarkdown が遅すぎる")
     val img = (src: String) => RichText.toHtml(parse(s"""{"type":"doc","content":[{"type":"image","attrs":{"src":"$src"}}]}""").toOption.get)
     assert(!img("https://tracker.example/t.png").contains("<img"))

@@ -105,11 +105,16 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa):
 
   // ---------------------------------------------------------------- 作成・変更
 
-  private def joinC(channelId: UUID, users: List[UUID], role: String): ConnectionIO[List[UUID]] =
+  /** 参加させる（参加した人を返す）。参加したことは変更履歴（member.joined、user_id 付き）にも残し、
+    * 開いている画面が参加しているチャンネルを読み直せるようにする（残さないと、新しいチャンネルの他人の投稿が届かない）。
+    */
+  private def joinC(channelId: UUID, users: List[UUID], role: String, actor: Option[UUID] = None): ConnectionIO[List[UUID]] =
     users.distinct.flatTraverse(u =>
-      sql"""insert into channel_member (channel_id, user_id, role, last_read_seq)
-            values ($channelId, $u, $role, coalesce((select max(seq) from message), 0))
-            on conflict do nothing""".update.run.map(n => if n > 0 then List(u) else Nil))
+      sql"""with j as (insert into channel_member (channel_id, user_id, role, last_read_seq)
+                       values ($channelId, $u, $role, coalesce((select max(seq) from message), 0))
+                       on conflict do nothing returning user_id)
+            insert into chat_event (channel_id, kind, actor_id, user_id)
+            select $channelId, ${EventKind.MemberJoined}, $actor, user_id from j""".update.run.map(n => if n > 0 then List(u) else Nil))
 
   /** チャンネルを作る（作った人は管理者）。名前が重なれば Conflict。 */
   def create(name: String, kind: String, topic: String, purpose: String, by: UUID, members: List[UUID], autoJoin: Boolean = false)
@@ -121,9 +126,9 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa):
         for
           _ <- sql"""insert into channel (id, name, kind, topic, purpose, auto_join, created_by)
                      values ($id, $name, $kind, $topic, $purpose, $autoJoin, $by)""".update.run
-          _ <- joinC(id, List(by), ChannelRole.Admin)
+          _ <- joinC(id, List(by), ChannelRole.Admin, Some(by))
           ms <- activeC(members.filterNot(_ == by))
-          _ <- joinC(id, ms, ChannelRole.Member)
+          _ <- joinC(id, ms, ChannelRole.Member, Some(by))
           _ <- autoJoinAllC(id, autoJoin)
           c <- findC(id)
         yield Right(c.get)
@@ -133,9 +138,10 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa):
   /** 自動参加のチャンネルに、全員（有効な人）を参加させる。 */
   private def autoJoinAllC(id: UUID, autoJoin: Boolean): ConnectionIO[Unit] =
     if !autoJoin then ().pure[ConnectionIO]
-    else sql"""insert into channel_member (channel_id, user_id, last_read_seq)
-               select $id, u.id, coalesce((select max(seq) from message), 0) from app_user u where not u.disabled and not u.is_bot
-               on conflict do nothing""".update.run.void
+    else sql"""with j as (insert into channel_member (channel_id, user_id, last_read_seq)
+                           select $id, u.id, coalesce((select max(seq) from message), 0) from app_user u where not u.disabled and not u.is_bot
+                           on conflict do nothing returning user_id)
+               insert into chat_event (channel_id, kind, user_id) select $id, ${EventKind.MemberJoined}, user_id from j""".update.run.void
 
   /** 既にある DM（作らない）。 */
   def findDm(users: List[UUID]): IO[Option[ChannelRow]] = tx(
@@ -175,7 +181,8 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa):
   // ---------------------------------------------------------------- メンバー
 
   /** 参加させる。新しく参加した人を返す。 */
-  def addMembers(channelId: UUID, users: List[UUID]): IO[List[UUID]] = tx(activeC(users).flatMap(joinC(channelId, _, ChannelRole.Member)))
+  def addMembers(channelId: UUID, users: List[UUID], actor: Option[UUID] = None): IO[List[UUID]] =
+    tx(activeC(users).flatMap(joinC(channelId, _, ChannelRole.Member, actor)))
 
   /** そのうち、存在して無効になっていないユーザー。 */
   def activeUsers(users: List[UUID]): IO[List[UUID]] = tx(activeC(users))

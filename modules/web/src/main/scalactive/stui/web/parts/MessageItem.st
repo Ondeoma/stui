@@ -29,6 +29,8 @@ def iconUrl(props: Props): Option[String] = props.m.props.hcursor.get[String]("i
 def iconEmoji(props: Props): Option[String] = props.m.props.hcursor.get[String]("iconEmoji").toOption.filter(_ => iconUrl(props).isEmpty)
 /** カスタム絵文字のアイコン（:name: で、登録されているもの）の画像. */
 def iconImage(props: Props): Option[String] = iconEmoji(props).filter(e => Emojis.custom.v.exists(c => Reactions.customName(e).contains(c.name))).flatMap(Emojis.image)
+/** 文字の絵文字のアイコン（:name: は絵文字の文字にする。描けないものは出さず、ふつうのアイコンにする）. */
+def iconChar(props: Props): Option[String] = iconEmoji(props).map(HookIcons.normalize).filter(HookIcons.drawable)
 def isBot(props: Props): Boolean = props.m.kind == "bot" || props.m.author.exists(_.bot)
 def isSystem(props: Props): Boolean = props.m.kind == "system"
 
@@ -132,7 +134,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
         <template v-if="props.compact"><span class="ctime">{{ Fmt.time(props.m.createdAt) }}</span></template>
         <template v-else>
           <img v-if="iconImage(props).isDefined" :src='iconImage(props).getOrElse("")' alt="" class="emoji-img">
-          <span v-else-if="iconEmoji(props).isDefined" class="emoji-icon">{{ iconEmoji(props).getOrElse("") }}</span>
+          <span v-else-if="iconChar(props).isDefined" class="emoji-icon">{{ iconChar(props).getOrElse("") }}</span>
           <Avatar v-else :user="userOf(props)" :size="36" />
         </template>
       </div>
@@ -213,7 +215,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
 .gutter { width: 40px; flex: none; display: flex; justify-content: center; }
 .ctime { visibility: hidden; font-size: .68rem; color: var(--muted); padding-top: .25rem; }
 .msg:hover .ctime { visibility: visible; }
-.emoji-icon { font-size: 1.7rem; line-height: 1; }
+.emoji-icon { font-size: 1.7rem; line-height: 1; max-width: 40px; overflow: hidden; white-space: nowrap; }
 .emoji-img { width: 36px; height: 36px; object-fit: contain; }
 .body { flex: 1; min-width: 0; }
 .head { display: flex; gap: .45rem; align-items: baseline; flex-wrap: wrap; }

@@ -342,6 +342,14 @@ object HookIcons {
     "🐛" -> "バグ", "🛠️" -> "ビルド", "📦" -> "リリース", "📈" -> "グラフ", "📅" -> "予定", "📣" -> "告知", "💬" -> "チャット", "🔒" -> "セキュリティ",
     "📝" -> "メモ", "🌐" -> "Web")
   def valid(e: String): Boolean = all.exists(_._1 == e) || Reactions.customName(e).isDefined
+
+  /** 送られてきた icon_emoji（Slack と同じ書き方）を表示する形にする。名前の分かる :name: は絵文字の文字にする。 */
+  def normalize(e: String): String = EmojiNames.fromShortcode(e).getOrElse(e.trim)
+
+  /** 文字のままアイコンに描けるか（短い絵文字だけ。英字・:・空白を含むものは枠からはみ出すので描かない）. */
+  def drawable(e: String): Boolean =
+    e.nonEmpty && e.codePointCount(0, e.length) <= 8 && e.exists(_ >= 128) &&
+      !e.exists(c => (c < 128 && c.isLetter) || c == ':' || c.isWhitespace)
 }
 
 final case class OutgoingHookDto(id: UUID, channel: Option[ChannelBrief], name: String, url: String, secret: String, events: List[String],

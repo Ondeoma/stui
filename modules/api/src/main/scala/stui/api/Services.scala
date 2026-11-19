@@ -292,7 +292,7 @@ final class ChatService(channels: ChannelStore, messages: MessageStore, users: U
       case Right(ctx) if ctx.isMember => channels.get(id, s.user.id).map(v => Right(v.get))
       case Right(ctx) if ctx.channel.archived => IO.pure(Left(Fail.Forbidden("アーカイブしたチャンネルには参加できません")))
       case Right(ctx) =>
-        channels.addMembers(id, List(s.user.id)) *> memberJoined(ctx.channel, s.user, List(s.user.id)) *>
+        channels.addMembers(id, List(s.user.id), Some(s.user.id)) *> memberJoined(ctx.channel, s.user, List(s.user.id)) *>
           channels.get(id, s.user.id).map(v => Right(v.get))
     }
 
@@ -308,16 +308,16 @@ final class ChatService(channels: ChannelStore, messages: MessageStore, users: U
 
   /** 権限を確かめた後に、メンバーを追加して知らせる（管理画面からエージェント専用アカウントを参加させるときも使う）。 */
   def addMembersTo(c: ChannelRow, actor: User, userIds: List[UUID]): IO[List[UUID]] =
-    channels.addMembers(c.id, userIds).flatTap(added => memberJoined(c, actor, added))
+    channels.addMembers(c.id, userIds, Some(actor.id)).flatTap(added => memberJoined(c, actor, added))
 
   private def memberJoined(c: ChannelRow, actor: User, added: List[UUID]): IO[Unit] =
     IO.whenA(added.nonEmpty)(
       users.briefsIO(added).flatMap { bs =>
         val names = bs.map(_.name).mkString("、")
         val text  = if added == List(actor.id) then s"${actor.name} さんが参加しました" else s"${actor.name} さんが $names さんを追加しました"
+        // 変更履歴（member.joined）は参加させるときに ChannelStore が残す
         system(c, actor, text) *> added.traverse_(u =>
-          messages.eventIO(c.id, EventKind.MemberJoined, actor = Some(actor.id), user = Some(u)) *>
-            webhook(c, EventKind.MemberJoined, None, Some(actor), None, Json.obj("user" -> u.asJson)))
+          webhook(c, EventKind.MemberJoined, None, Some(actor), None, Json.obj("user" -> u.asJson)))
       })
 
   def removeMember(s: AuthSession, id: UUID, userId: UUID): Res[Unit] =

@@ -81,19 +81,58 @@ object RichText:
         rest = after
     Json.obj("type" -> Json.fromString("doc"), "content" -> Json.fromValues(blocks.result()))
 
-  /** **太字**・*斜体*・~~取り消し~~・`コード`・[文字](URL)・<URL|文字>（Slack の書き方）・URL だけ解釈する。 */
-  private def inlines(s: String): List[Json] =
+  /** **太字**・*斜体*・~~取り消し~~・`コード`・[文字](URL)・<URL|文字>（Slack の書き方）・URL だけ解釈する。
+    * 記号の前の `\`（CommonMark のバックスラッシュエスケープ）は、記号を記法ではなく文字として扱う。
+    */
+  private def inlines(s: String): List[Json] = inlineRuns(hideEscapes(s))
+
+  /** エスケープした記号を置き換える文字の範囲（私用領域。記法の正規表現に当たらないようにする）。 */
+  private val EscBase = 0xE000
+
+  private def isAsciiPunct(c: Char): Boolean = c >= '!' && c <= '~' && !c.isLetterOrDigit
+
+  private def isHidden(c: Char): Boolean = c >= (EscBase + '!') && c <= (EscBase + '~')
+
+  /** `\記号` を私用領域の1文字に置き換える。コード(`…`)の中はそのまま残す（CommonMark と同じ）。 */
+  private def hideEscapes(s: String): String =
+    val b = new StringBuilder
+    var i = 0
+    while i < s.length do
+      val c = s(i)
+      if c == '\\' && i + 1 < s.length && isAsciiPunct(s(i + 1)) then
+        b.append((EscBase + s(i + 1)).toChar); i += 2
+      else if c == '`' then
+        val run   = s.indexWhere(_ != '`', i) match { case -1 => s.length - i; case j => j - i }
+        val delim = "`" * run
+        // 同じ長さの ` の並びで閉じるところまで（閉じなければ ` はただの文字）。
+        // 探す範囲はコードの正規表現と同じく 2000 文字までにし、閉じない ` が続いても処理時間が2乗に伸びないようにする
+        val w = s.substring(i, math.min(s.length, i + run + 2001 + run))
+        var k = w.indexOf(delim, run)
+        while k >= 0 && k + run < w.length && w(k + run) == '`' do
+          k = w.indexOf(delim, w.indexWhere(_ != '`', k) match { case -1 => w.length; case j => j })
+        if k < 0 then { b.append(delim); i += run }
+        else { b.append(w.substring(0, k + run)); i += k + run }
+      else { b.append(c); i += 1 }
+    b.toString
+
+  /** 置き換えた文字を戻す。inCode ならコードの中なので `\` も残す。 */
+  private def showEscapes(s: String, inCode: Boolean = false): String =
+    if !s.exists(isHidden) then s
+    else s.flatMap(c => if isHidden(c) then (if inCode then "\\" else "") + (c - EscBase).toChar else c.toString)
+
+  private def inlineRuns(s: String): List[Json] =
     // 繰り返しに上限を付け、閉じない記号が続いても処理時間が入力の2乗に伸びないようにする
     val re = """(\*\*[^*]{1,2000}\*\*|~~[^~]{1,2000}~~|`[^`]{1,2000}`|\[[^\[\]]{1,500}\]\([^)\s]{1,2000}\)|<https?://[^<>|\s]{1,2000}(?:\|[^<>]{1,500})?>|https?://[^\s<>()]{1,2000}|\*[^*\s][^*]{0,2000}\*)""".r
     val out = List.newBuilder[Json]
     var pos = 0
     def plain(t: String, marks: List[Json] = Nil) =
       if t.nonEmpty then
-        out += Json.obj(("type" -> Json.fromString("text")) :: ("text" -> Json.fromString(t)) :: (if marks.isEmpty then Nil else List("marks" -> Json.fromValues(marks)))*)
+        val inCode = marks.exists(m => m.hcursor.get[String]("type").contains("code"))
+        out += Json.obj(("type" -> Json.fromString("text")) :: ("text" -> Json.fromString(showEscapes(t, inCode))) :: (if marks.isEmpty then Nil else List("marks" -> Json.fromValues(marks)))*)
     def mark(t: String) = Json.obj("type" -> Json.fromString(t))
     // 太字・取り消しの中のリンクなども解釈する（中の文字に印を足す）
     def nested(inner: String, m: Json): Unit =
-      inlines(inner).foreach { n =>
+      inlineRuns(inner).foreach { n =>
         val ms = n.hcursor.downField("marks").focus.flatMap(_.asArray).map(_.toList).getOrElse(Nil)
         out += n.mapObject(_.add("marks", Json.fromValues(m :: ms)))
       }
@@ -107,13 +146,13 @@ object RichText:
         val inner = x.drop(1).dropRight(1)
         val href  = inner.takeWhile(_ != '|')
         val label = if inner.contains('|') then inner.dropWhile(_ != '|').drop(1) else href
-        plain(label, List(Json.obj("type" -> Json.fromString("link"), "attrs" -> Json.obj("href" -> Json.fromString(href)))))
+        plain(label, List(Json.obj("type" -> Json.fromString("link"), "attrs" -> Json.obj("href" -> Json.fromString(showEscapes(href))))))
       else if x.startsWith("http") then
-        plain(x, List(Json.obj("type" -> Json.fromString("link"), "attrs" -> Json.obj("href" -> Json.fromString(x)))))
+        plain(x, List(Json.obj("type" -> Json.fromString("link"), "attrs" -> Json.obj("href" -> Json.fromString(showEscapes(x))))))
       else if x.startsWith("[") then
         val label = x.drop(1).takeWhile(_ != ']')
         val href  = x.dropWhile(_ != '(').drop(1).dropRight(1)
-        plain(label, List(Json.obj("type" -> Json.fromString("link"), "attrs" -> Json.obj("href" -> Json.fromString(href)))))
+        plain(label, List(Json.obj("type" -> Json.fromString("link"), "attrs" -> Json.obj("href" -> Json.fromString(showEscapes(href))))))
       else plain(x.drop(1).dropRight(1), List(mark("italic")))
       pos = m.end
     }

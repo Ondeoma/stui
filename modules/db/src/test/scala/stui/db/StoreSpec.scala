@@ -131,6 +131,32 @@ class StoreSpec extends CatsEffectSuite:
     yield ()
   }
 
+  withDb("参加の変更履歴: チャンネルの作成・DM・メンバーの追加で、参加した人ごとに member.joined を残す") { st =>
+    def joined(after: Long, c: UUID) = st.messages.eventsAfter(after).map(_.filter(_._2 == c).flatMap(_._3).toSet)
+    for
+      a <- user(st, "参加 A")
+      b <- user(st, "参加 B")
+      x <- user(st, "参加 C")
+      e0 <- st.messages.latestEvent
+      c <- st.channels.create(uniq("参加"), ChannelKind.Public, "", "", a.id, List(b.id)).map(_.toOption.get)
+      j1 <- joined(e0, c.id)
+      _ = assertEquals(j1, Set(a.id, b.id))
+      e1 <- st.messages.latestEvent
+      added <- st.channels.addMembers(c.id, List(b.id, x.id), Some(a.id))
+      _ = assertEquals(added, List(x.id))
+      j2 <- joined(e1, c.id)
+      _ = assertEquals(j2, Set(x.id))
+      e2 <- st.messages.latestEvent
+      d <- st.channels.openDm(List(a.id, b.id))
+      j3 <- joined(e2, d.id)
+      _ = assertEquals(j3, Set(a.id, b.id))
+      e3 <- st.messages.latestEvent
+      _ <- st.channels.openDm(List(b.id, a.id))
+      j4 <- joined(e3, d.id)
+      _ = assertEquals(j4, Set.empty[UUID])
+    yield ()
+  }
+
   withDb("検索: 日本語の部分一致・かなの揺れ・絞り込み・見られないチャンネルは除く") { st =>
     val word = "検索" + UUID.randomUUID().toString.filter(_.isDigit).take(6)
     for

@@ -46,7 +46,7 @@ final class WebhookService(hooks: HookStore, users: UserStore, channels: Channel
           val icon = str(c0, "icon_url").orElse(h.iconUrl).filter(_.startsWith("https://"))
           // 送られてきたアイコン（画像・絵文字）が優先。なければ Webhook に選んだもの
           val sentIcon = str(c0, "icon_url").orElse(str(c0, "icon_emoji"))
-          val emoji = str(c0, "icon_emoji").filter(_.length <= 40).orElse(if sentIcon.isEmpty && h.iconUrl.isEmpty then h.iconEmoji else None)
+          val emoji = str(c0, "icon_emoji").filter(_.length <= 40).map(HookIcons.normalize).orElse(if sentIcon.isEmpty && h.iconUrl.isEmpty then h.iconEmoji else None)
           users.bot(s"bot:hook:${h.id}", h.name).flatMap(bot =>
             chat.publish(c, Author(bot, "webhook"), RichText.fromMarkdown(md), None, false,
               Json.obj("username" -> name.asJson, "iconUrl" -> icon.asJson, "iconEmoji" -> emoji.asJson, "hook" -> h.id.asJson).dropNullValues, "bot"))
