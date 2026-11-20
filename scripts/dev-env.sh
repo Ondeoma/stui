@@ -2,6 +2,8 @@
 export DATABASE_URL=jdbc:postgresql://localhost:54379/stui DATABASE_USER=stui DATABASE_PASSWORD=stui
 export PUBLIC_URL=${PUBLIC_URL:-http://localhost:5178} HTTP_PORT=8098
 export DEV_LOGIN=true
+# 開発では、IP ごとの回数の制限を緩める（スモークテストなどが同じ IP から続けて呼ぶ）
+export RATE_LIMIT_AUTH=${RATE_LIMIT_AUTH:-300} RATE_LIMIT_PUBLIC=${RATE_LIMIT_PUBLIC:-1000}
 export S3_ENDPOINT=http://localhost:3920 S3_BUCKET=stui S3_ACCESS_KEY=stui S3_SECRET_KEY=stuistuistuistui
 export SMTP_HOST=localhost SMTP_PORT=1027 SMTP_TLS=none MAIL_FROM=stui@example.com MAIL_DELAY_MINUTES=1
 export WEBHOOK_ALLOW_HTTP=true WEBHOOK_ALLOW_PRIVATE=true

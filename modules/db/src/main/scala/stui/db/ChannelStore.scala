@@ -1,5 +1,6 @@
 package stui.db
 
+import sbirds.db.*
 import sbirds.shared.AppError
 
 import cats.effect.*
@@ -48,8 +49,6 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
 
   def byName(name: String): IO[Option[ChannelRow]] = tx((fr"select" ++ cols ++
     fr"from channel c where lower(c.name) = lower($name) and c.kind in ('public', 'private')").query[ChannelRow].option)
-
-  def member(channelId: UUID, userId: UUID): IO[Option[MemberRow]] = tx(memberC(channelId, userId))
 
   def memberC(channelId: UUID, userId: UUID): ConnectionIO[Option[MemberRow]] =
     sql"select role, notify, muted, last_read_seq from channel_member where channel_id = $channelId and user_id = $userId".query[

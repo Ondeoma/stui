@@ -51,7 +51,7 @@ final class MattermostImporter(src: MattermostSource,
 
   private def importAll(teams: List[MmTeam], opts: MattermostImportOptions): IO[MattermostImportReport] =
     for {
-      u <- importUsers
+      u <- importUsers(opts.linkByEmail)
       (users, mmUsers, r1) = u
       c <- importChannels(teams, users)
       (channels, seen, r2) = c
@@ -65,15 +65,18 @@ final class MattermostImporter(src: MattermostSource,
 
   // ---------------------------------------------------------------- ユーザー
 
-  /** 同じメールアドレスの人がいればその人に結び付け、いなければ作る（最初のログインで引き継ぐ）。 */
-  private def importUsers: IO[(Map[String, UUID], List[MmUser], MattermostImportReport)] =
+  /**
+   * 同じメールアドレスの人がいればその人に結び付け、いなければ作る（最初のログインで引き継ぐ）。
+   * 結び付けるのは、メールアドレスが確かめ済みの人だけ（linkByEmail なら未確認の人にも結び付ける）。
+   */
+  private def importUsers(linkByEmail: Boolean): IO[(Map[String, UUID], List[MmUser], MattermostImportReport)] =
     for {
       done <- store.mapped("user")
       all <- src.users
       fresh = all.filterNot(u => done.contains(u.id))
       res <- fresh.traverse { u =>
         val email = Option(u.email.trim).filter(e => e.contains("@") && !u.isBot)
-        email.flatTraverse(store.userByEmail).flatMap {
+        email.flatTraverse(store.userByEmail(_, verifiedOnly = !linkByEmail)).flatMap {
           case Some(id) => store.map("user", u.id, id).as((u.id, id, true))
           case None =>
             store.insertUser(

@@ -1,23 +1,22 @@
 package stui.app
 
+import sbirds.db.*
 import sbirds.links.IntegrationTokenStore
 import cats.effect.*
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import doobie.implicits.*
-import fs2.io.file.Path
 import org.http4s.*
-import org.http4s.dsl.io.*
 import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.ember.server.EmberServerBuilder
-import sbirds.http.Errors
+import sbirds.http.{Errors, Health, Spa}
 import stui.core.ErrorCode
-import org.http4s.server.staticcontent.*
 import stui.api.*
 import sbirds.auth.{OidcClient, OidcConfig}
 import stui.auth.SecretBox
 import stui.db.*
 import sbirds.mail.{SmtpConfig, SmtpMailer}
+import sbirds.net.NetGuard
 import sbirds.observe.{HttpClientTelemetry, HttpTelemetry, Metrics, RumRoutes, Telemetry}
 import sbirds.storage.{S3BlobStore, S3Config}
 
@@ -58,6 +57,8 @@ object Main extends IOApp.Simple {
         _ <- gauges(xa)
         // 外への呼び出しもトレースに出す（traceparent を付けて送る）
         http <- EmberClientBuilder.default[IO].withTimeout(30.seconds).build.map(HttpClientTelemetry(_))
+        // 利用者が設定した URL（送信 Webhook）へ送るクライアント. WEBHOOK_ALLOW_PRIVATE でなければ、確かめた IP にそのままつなぐ
+        hookHttp <- NetGuard.client(NetGuard.Policy.of(cfg.api.webhookAllowPrivate)).map(HttpClientTelemetry(_))
         users = new UserStore(xa)
         channels = new ChannelStore(xa)
         messages = new MessageStore(xa)
@@ -76,7 +77,7 @@ object Main extends IOApp.Simple {
         push <- Resource.eval(sbirds.push.PushService.create(pushStore, http, cfg.api.publicUrl, "stui"))
         notifier = new NotifyService(activity, cfg.api, cfg.mailDelaySeconds, Some(push))
         chat = new ChatService(channels, messages, users, access, notifier, hooks, activity, cfg.api)
-        webhooks = new WebhookService(hooks, users, channels, chat, http, cfg.api)
+        webhooks = new WebhookService(hooks, users, channels, chat, hookHttp, cfg.api)
         sched = new ScheduleService(schedule, messages, channels, users, chat, notifier, sess)
         mailer = cfg.smtp.map(new SmtpMailer(_))
         feed <- Resource.eval(EventFeed(messages, activity))
@@ -93,7 +94,8 @@ object Main extends IOApp.Simple {
         )
         _ <- loops.traverse_(_.background)
         rest =
-          healthRoutes(xa, cfg.nodeId) <+>
+          // ロードバランサー用のヘルスチェック。DB（プライマリ）に書けない状態なら 503
+          Health.routes(Database.isPrimary(xa), s"ok ${cfg.nodeId}", errorDetail = true) <+>
             new AuthRoutes(oidc, users, channels, activity, sess, access, cfg.api).routes <+>
             new UserRoutes(users, channels, activity, blobs, emojis, sess, access).routes <+>
             new AgentRoutes(users, channels, chat, activity, sess, access).routes <+>
@@ -105,7 +107,12 @@ object Main extends IOApp.Simple {
             new HookRoutes(hooks, webhooks, channels, activity, sess, access, cfg.api).routes <+>
             new AppRoutes(channels, users, chat, notifier, sess, access, cfg.api).routes <+>
             new StreamRoutes(feed, channels, sess, access).routes <+>
-            new OAuthRoutes(new OAuthStore(xa), activity, sess, access, cfg.api).routes <+>
+            new OAuthRoutes(
+              new sbirds.oauth.OAuthKeyStore(xa, revokeOnReuse = true),
+              activity,
+              sess,
+              cfg.api
+            ).routes <+>
             new LinkServiceRoutes(
               new IntegrationTokenStore(xa),
               http,
@@ -119,9 +126,12 @@ object Main extends IOApp.Simple {
             RumRoutes.routes <+>
             new PushRoutes(pushStore, push, sess, access).routes
         app = rest <+> new McpRoutes(rest, sess, cfg.api.publicUrl).routes
-        all = cfg.staticDir.fold(app)(d => app <+> spa(d))
+        // ビルド済みの画面の配信。存在しないパスは index.html（SPA）
+        all = cfg.staticDir.fold(app)(d =>
+          app <+> Spa.routes(d, Spa.startsWith("api", "auth", "hooks", "mcp", "oauth"))
+        )
         httpApp <- HttpTelemetry(
-          Errors.handle(Guards(all, cfg.api).orNotFound, ErrorCode.Unexpected),
+          Errors.handle(Guards(RateLimit(all, cfg.api.rateLimit), cfg.api).orNotFound, ErrorCode.Unexpected),
           List("/api", "/auth", "/mcp", "/oauth", "/hooks")
         )
         _ <- EmberServerBuilder.default[IO]
@@ -175,19 +185,6 @@ object Main extends IOApp.Simple {
     ).sequence_
   }
 
-  /** ロードバランサー用のヘルスチェック。DB（プライマリ）に書けない状態なら 503。 */
-  private def healthRoutes(xa: doobie.Transactor[IO], node: String): HttpRoutes[IO] = HttpRoutes.of[IO] {
-    case GET -> Root / "healthz" =>
-      sql"select not pg_is_in_recovery()".query[Boolean].unique.transact(xa).timeout(3.seconds).attempt.flatMap {
-        case Right(true) => text(Status.Ok, s"ok $node")
-        case Right(false) => text(Status.ServiceUnavailable, "database is read-only (not primary)")
-        case Left(e) => text(Status.ServiceUnavailable, s"database unavailable: ${e.getMessage}")
-      }
-  }
-
-  private def text(status: Status, body: String): IO[Response[IO]] =
-    IO.pure(Response[IO](status).withEntity(body)(using EntityEncoder.stringEncoder))
-
   private def blobStore(cfg: AppConfig): Resource[IO, Option[sbirds.storage.BlobStore]] = cfg.s3 match {
     case Some(c) => S3BlobStore.resource(c).evalTap(_.ensureBucket).map(Some(_))
     case None => Resource.eval(sbirds.observe.Log.println("[stui] WARNING: S3_ENDPOINT が未設定のため、添付ファイルは使えません").as(None))
@@ -210,19 +207,4 @@ object Main extends IOApp.Simple {
         activity.purgeAudit(730).void *>
         messages.orphanAttachments.flatMap(_.traverse_((_, key) => blobs.traverse_(_.delete(key).handleError(_ => ()))))
     ))
-
-  /** ビルド済みの画面の配信。存在しないパスは index.html（SPA）。 */
-  private def spa(dir: String): HttpRoutes[IO] = {
-    val files = fileService[IO](FileService.Config(dir))
-    val index = HttpRoutes.of[IO] {
-      case req @ GET -> _
-          if !Set("api", "auth", "hooks", "mcp", "oauth").exists(p => req.pathInfo.renderString.startsWith("/" + p)) =>
-        StaticFile.fromPath(Path(dir) / "index.html", Some(req)).getOrElseF(NotFound())
-    }
-    HttpRoutes[IO] { req =>
-      val cc =
-        if req.pathInfo.renderString.startsWith("/assets/") then "public, max-age=31536000, immutable" else "no-cache"
-      (files <+> index).run(req).map(_.putHeaders("Cache-Control" -> cc))
-    }
-  }
 }

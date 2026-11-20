@@ -1,20 +1,26 @@
 package stui.api
 
 import cats.effect.*
-import io.circe.Decoder
 import org.http4s.*
 import org.http4s.circe.CirceEntityCodec.*
-import org.http4s.dsl.Http4sDsl
 import stui.core.*
 import stui.db.*
-import sbirds.http.Errors
+import sbirds.http.{Errors, RouteHelpers}
 import sbirds.shared.AppError
 
 import java.util.UUID
 
-trait RouteSupport extends Http4sDsl[IO] {
+/**
+ * *Routes に共通の補助（エラー応答・認証・権限の確認）。本文・クエリ・パスの UUID・302 は sbirds.http.RouteHelpers。
+ */
+trait RouteSupport extends RouteHelpers {
   protected def sessions: SessionAuth
   protected def access: Access2
+
+  protected def bodyInvalid: sbirds.shared.ErrorCode = ErrorCode.RequestBodyInvalid
+
+  // 本文の読み取りの途中のエラー（大きすぎる本文を含む）は、これまでどおり RequestBodyInvalid（400）にする
+  override protected def bodyKeepsAppError: Boolean = false
 
   /** エラーの応答（コード付きでログに出る）. detail を省くとコードの既定の文言. */
   protected def err(code: ErrorCode, detail: String | Null = null): IO[Response[IO]] =
@@ -58,12 +64,6 @@ trait RouteSupport extends Http4sDsl[IO] {
   protected def adminSession(req: Request[IO])(f: AuthSession => IO[Response[IO]]): IO[Response[IO]] =
     admin(req)(s => if s.isSession then f(s) else err(ErrorCode.SessionOnly))
 
-  protected def body[A: Decoder](req: Request[IO])(f: A => IO[Response[IO]]): IO[Response[IO]] =
-    req.as[A].attempt.flatMap {
-      case Left(e) => err(ErrorCode.RequestBodyInvalid, s"リクエストの内容が正しくありません: ${e.getMessage.take(200)}")
-      case Right(b) => f(b)
-    }
-
   /** チャンネルを見られることを確認してから処理する。 */
   protected def withChannel(req: Request[IO],
                             id: UUID,
@@ -81,38 +81,33 @@ trait RouteSupport extends Http4sDsl[IO] {
 
   /** multipart/form-data の file を一時ファイルに受け取る（上限を超えたら 413）。 */
   protected def withUpload(req: Request[IO], maxBytes: Long)(f: Upload => IO[Response[IO]]): IO[Response[IO]] =
-    req.as[org.http4s.multipart.Multipart[IO]].attempt.flatMap {
-      case Left(_) => err(ErrorCode.UploadNotMultipart)
-      case Right(mp) =>
-        mp.parts.find(_.name.contains("file")) match {
-          case None => err(ErrorCode.UploadFileMissing)
-          case Some(part) =>
-            val name =
-              part.filename.map(_.trim).filter(_.nonEmpty).getOrElse("file").replaceAll("[\\\\/\\r\\n]", "_").take(200)
-            val ct = part.contentType.map(c => s"${c.mediaType.mainType}/${c.mediaType.subType}").getOrElse(
-              "application/octet-stream"
-            )
-            fs2.io.file.Files[IO].tempFile.use { tmp =>
-              part.body.take(maxBytes + 1).through(fs2.io.file.Files[IO].writeAll(tmp)).compile.drain *>
-                fs2.io.file.Files[IO].size(tmp).flatMap { size =>
-                  if size > maxBytes then
-                    err(ErrorCode.UploadTooLarge, s"ファイルが大きすぎます（上限 ${math.max(1, maxBytes / 1024 / 1024)}MB）")
-                  else f(Upload(name, ct, tmp, size))
-                }
-            }
-        }
-    }
+    // 大きい部分は一時ファイルに受ける（既定のデコーダーは全体をメモリに載せるので、同時のアップロードでメモリを使い切る）。
+    // 一時ファイルは use を抜けると消えるので、受け取った後の処理もこの中で行う
+    EntityDecoder.mixedMultipartResource[IO](maxSizeBeforeWrite = 1024 * 1024).use(dec =>
+      dec.decode(req, strict = true).value.attempt.flatMap {
+        case Right(Right(mp)) =>
+          mp.parts.find(_.name.contains("file")) match {
+            case None => err(ErrorCode.UploadFileMissing)
+            case Some(part) =>
+              val name =
+                part.filename.map(_.trim).filter(_.nonEmpty).getOrElse("file").replaceAll(
+                  "[\\\\/\\r\\n]",
+                  "_"
+                ).take(200)
+              val ct = part.contentType.map(c => s"${c.mediaType.mainType}/${c.mediaType.subType}").getOrElse(
+                "application/octet-stream"
+              )
+              fs2.io.file.Files[IO].tempFile.use { tmp =>
+                part.body.take(maxBytes + 1).through(fs2.io.file.Files[IO].writeAll(tmp)).compile.drain *>
+                  fs2.io.file.Files[IO].size(tmp).flatMap { size =>
+                    if size > maxBytes then
+                      err(ErrorCode.UploadTooLarge, s"ファイルが大きすぎます（上限 ${math.max(1, maxBytes / 1024 / 1024)}MB）")
+                    else f(Upload(name, ct, tmp, size))
+                  }
+              }
+          }
+        case _ => err(ErrorCode.UploadNotMultipart)
+      }
+    )
 
-  protected object UuidVar {
-    def unapply(s: String): Option[UUID] = uuidOpt(s)
-  }
-
-  /** 同じサイトの中のパスか（ログイン・連携の後に戻る先。"//…"・"/\…" は別のサイトになるので除く）。 */
-  protected def localPath(p: String): Boolean =
-    p.startsWith("/") && !p.startsWith("//") && !p.startsWith("/\\") && !p.exists(_.isControl)
-
-  protected def param(req: Request[IO], k: String): Option[String] = req.params.get(k).map(_.trim).filter(_.nonEmpty)
-
-  protected def intParam(req: Request[IO], k: String, default: Int, max: Int): Int =
-    param(req, k).flatMap(_.toIntOption).map(v => math.max(1, math.min(v, max))).getOrElse(default)
 }

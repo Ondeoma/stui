@@ -4,6 +4,7 @@ import cats.effect.*
 import stui.core.*
 import stui.db.*
 import stui.shared.*
+import sbirds.oauth.OAuthClient
 import sbirds.shared.AppError
 
 import java.time.{LocalDate, ZoneId}
@@ -22,7 +23,8 @@ final case class ApiConfig(adminGroups: Set[String],
                            webhookAllowPrivate: Boolean = false,
                            version: String = "0.1.0",
                            oauthClients: List[OAuthClient] = Nil,
-                           linkServices: List[LinkService] = Nil) {
+                           linkServices: List[LinkService] = Nil,
+                           rateLimit: sbirds.http.RateLimitConfig = sbirds.http.RateLimitConfig()) {
   def service(provider: String): Option[LinkService] = linkServices.find(_.provider == provider)
 }
 
@@ -37,13 +39,6 @@ final case class LinkService(provider: String,
                              internalUrl: Option[String] = None) {
   def apiUrl: String = internalUrl.getOrElse(url)
 }
-
-/** 認可を求める外部のサービス（OAUTH_CLIENTS で登録する）。redirectUri は完全一致で照合する。scopes は許すスコープ（read・write）。 */
-final case class OAuthClient(id: String,
-                             secret: String,
-                             redirectUri: String,
-                             name: String,
-                             scopes: List[String] = List("read"))
 
 type Res[A] = IO[Either[AppError, A]]
 

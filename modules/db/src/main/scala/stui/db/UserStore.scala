@@ -1,5 +1,6 @@
 package stui.db
 
+import sbirds.db.*
 import cats.effect.*
 import cats.syntax.all.*
 import doobie.*
@@ -21,22 +22,26 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa) {
   /**
    * ログイン時に作成・更新する。timezone は新しく作るときだけ使う（既定のタイムゾーン。あとは本人が個人設定で変える）。
    * Mattermost から取り込んだユーザー（まだ誰もログインしていない）に同じメールアドレスの人がいれば、その人のアカウントとして引き継ぐ。
+   * 引き継ぐのは、IdP がメールアドレスを確かめ済み（emailVerified）のときだけ（未確認のメールアドレスで他人の履歴を取れないように）。
    */
   def upsert(sub: String,
              name: String,
              email: Option[String],
              avatar: Option[String],
-             timezone: String = "Asia/Tokyo"): IO[User] = tx(
-    email.filter(_ => !sub.startsWith(Mattermost.SubPrefix)).traverse_ { e =>
+             timezone: String = "Asia/Tokyo",
+             emailVerified: Boolean = false): IO[User] = tx(
+    email.filter(_ => emailVerified && !sub.startsWith(Mattermost.SubPrefix)).traverse_ { e =>
       sql"""update app_user set sub = $sub where id = (
               select id from app_user where sub like ${Mattermost.SubPrefix +
           "%"} and lower(email) = lower($e) and not is_bot
               order by created_at limit 1)
             and not exists(select 1 from app_user where sub = $sub)""".update.run
     } *>
-      sql"""insert into app_user (id, sub, name, email, avatar_url, timezone, last_login_at)
-          values (${UUID.randomUUID()}, $sub, $name, $email, $avatar, $timezone, now())
+      sql"""insert into app_user (id, sub, name, email, email_verified, avatar_url, timezone, last_login_at)
+          values (${UUID.randomUUID()}, $sub, $name, $email, ${emailVerified &&
+        email.isDefined}, $avatar, $timezone, now())
           on conflict (sub) do update set name = excluded.name, email = excluded.email,
+            email_verified = excluded.email_verified,
             avatar_url = case when app_user.avatar_key is not null then app_user.avatar_url else excluded.avatar_url end,
             last_login_at = now()
           returning id, sub, name, email, avatar_url, is_admin, disabled, timezone, is_bot""".query[User].unique
@@ -106,11 +111,6 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa) {
   def withGroups(userId: UUID): IO[Option[(User, List[Group])]] =
     tx(findC(userId).flatMap(_.filterNot(_.disabled).traverse(u => groupsOf(u.id).map(u -> _))))
 
-  def groupByName(name: String): IO[UUID] = tx(
-    sql"""insert into user_group (id, name) values (${UUID.randomUUID()}, $name)
-          on conflict (name) do update set name = excluded.name returning id""".query[UUID].unique
-  )
-
   /** 一覧（管理画面・メンションの候補）。q で名前を絞る。 */
   def list(q: Option[String],
            includeDisabled: Boolean,
@@ -179,18 +179,6 @@ final class UserStore(xa: Transactor[IO]) extends TxStore(xa) {
     sql"""select g.id, g.name, count(m.user_id)::int from user_group g left join group_member m on m.group_id = g.id
           group by g.id, g.name order by g.name""".query[(UUID, String, Int)].to[List]
   )
-
-  /** 名前・メール・ID でユーザーを探す（API の指定用）。 */
-  def resolve(s: String): IO[Option[UUID]] = tx {
-    val t = s.trim
-    uuidOpt(t) match {
-      case Some(id) => sql"select id from app_user where id = $id".query[UUID].option
-      case None =>
-        sql"select id from app_user where not disabled and (lower(email) = lower($t) or name = $t or sub = $t) order by last_login_at desc nulls last limit 1".query[
-          UUID
-        ].option
-    }
-  }
 
   // ---------------------------------------------------------------- 通知の設定
 

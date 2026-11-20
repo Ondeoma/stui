@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 
 /**
- * Scala.js(sbt の web プロジェクト)の出力を `import 'scalajs:main.js'` で読み込む Vite プラグイン（skiwi と同じ）。
+ * Scala.js(sbt の web プロジェクト)の出力を `import 'scalajs:main.js'` で読み込む Vite プラグイン。
  * 起動時・ビルド時に sbt で fastLinkJS / fullLinkJS を実行し、その出力先を解決する。
  */
 export default function scalaJS(opts) {

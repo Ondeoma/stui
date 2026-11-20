@@ -1,5 +1,6 @@
 package stui.db
 
+import sbirds.db.*
 import cats.effect.*
 import cats.syntax.all.*
 import doobie.*
@@ -64,9 +65,6 @@ final class MessageStore(xa: Transactor[IO]) extends TxStore(xa) {
   def findC(id: UUID): ConnectionIO[
     Option[MessageRow]
   ] = (fr"select" ++ cols ++ fr"from message m where m.id = $id").query[MessageRow].option
-
-  def rows(ids: List[UUID]): IO[List[MessageRow]] =
-    tx((fr"select" ++ cols ++ fr"from message m where m.id = any(${ids.toArray})").query[MessageRow].to[List])
 
   // ---------------------------------------------------------------- 表示用の形（作者・リアクション・返信した人・添付・保存）
 
@@ -135,8 +133,6 @@ final class MessageStore(xa: Transactor[IO]) extends TxStore(xa) {
         }
       }
     }
-
-  def viewsIO(rs: List[MessageRow], viewer: UUID): IO[List[MessageDto]] = tx(views(rs, viewer))
 
   def view(id: UUID, viewer: UUID): IO[Option[MessageDto]] =
     tx(findC(id).flatMap(_.toList.traverse(r => views(List(r), viewer)).map(_.flatten.headOption)))
@@ -399,12 +395,6 @@ final class MessageStore(xa: Transactor[IO]) extends TxStore(xa) {
   /** チャンネルの最新の通し番号。 */
   def latestSeq(channelId: UUID): IO[Long] =
     tx(sql"select coalesce(max(seq), 0) from message where channel_id = $channelId".query[Long].unique)
-
-  /** スレッドの返信をしたことがある人・親の作者（返信の通知用）。 */
-  def threadParticipants(rootId: UUID): IO[List[UUID]] =
-    tx(sql"select author_id from message where (id = $rootId or root_id = $rootId) and author_id is not null group by author_id".query[
-      UUID
-    ].to[List])
 
   // ---------------------------------------------------------------- 添付ファイル
 

@@ -1,9 +1,10 @@
 package stui.app
 
+import sbirds.db.*
 import cats.effect.*
 import cats.syntax.all.*
 import stui.api.{MattermostImportOptions, MattermostImporter, MattermostSource}
-import stui.db.{Database, DbConfig, ImportStore}
+import stui.db.ImportStore
 import sbirds.storage.S3BlobStore
 
 import java.nio.file.{Files, Path}
@@ -16,9 +17,10 @@ import java.nio.file.{Files, Path}
 object ImportMattermost extends IOApp {
 
   private val usage =
-    """使い方: stui.app.ImportMattermost [--team <チームの名前>]… [--files <ディレクトリ>] [--dry-run]
+    """使い方: stui.app.ImportMattermost [--team <チームの名前>]… [--files <ディレクトリ>] [--link-by-email] [--dry-run]
       |  --team     取り込むチーム（Mattermost のチームの名前. URL に出るもの）。複数指定できる。省くとすべて
       |  --files    Mattermost のファイルの置き場所（config.json の FileSettings.Directory. 例: /opt/mattermost/data）。添付とカスタム絵文字を取り込む
+      |  --link-by-email  メールアドレスが未確認の既存のユーザーにも、同じメールアドレスで結び付ける（既定は、IdP が確かめ済みの人だけ）
       |  --dry-run  書き込まずに、取り込む数だけを表示する
       |取り込み元: MATTERMOST_DATABASE_URL・MATTERMOST_DATABASE_USER・MATTERMOST_DATABASE_PASSWORD
       |取り込み先: stui と同じ DATABASE_*・S3_*""".stripMargin
@@ -32,6 +34,7 @@ object ImportMattermost extends IOApp {
       case "--files" :: d :: rest =>
         val p = Path.of(d).toAbsolutePath.normalize()
         if Files.isDirectory(p) then parseArgs(rest, o.copy(filesDir = Some(p))) else Left(s"ディレクトリがありません: $d")
+      case "--link-by-email" :: rest => parseArgs(rest, o.copy(linkByEmail = true))
       case "--dry-run" :: rest => parseArgs(rest, o.copy(dryRun = true))
       case x :: _ => Left(s"分からない引数です: $x")
     }

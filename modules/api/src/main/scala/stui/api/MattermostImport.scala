@@ -46,7 +46,11 @@ final case class MmEmoji(id: String, name: String, creatorId: String)
 
 // ------------------------------------------------------------------ 取り込み
 
-/** teams: 取り込むチーム（名前. 空ならすべて）。filesDir: Mattermost のファイルの置き場所（FileSettings.Directory. 添付・カスタム絵文字）。 */
+/**
+ * teams: 取り込むチーム（名前. 空ならすべて）。filesDir: Mattermost のファイルの置き場所（FileSettings.Directory. 添付・カスタム絵文字）。
+ * linkByEmail: メールアドレスが未確認の既存のユーザーにも、同じメールアドレスで結び付ける（既定は確かめ済みの人だけ）。
+ */
 final case class MattermostImportOptions(teams: List[String] = Nil,
                                          filesDir: Option[Path] = None,
-                                         dryRun: Boolean = false)
+                                         dryRun: Boolean = false,
+                                         linkByEmail: Boolean = false)

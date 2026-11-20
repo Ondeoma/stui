@@ -1,5 +1,6 @@
 package stui.db
 
+import sbirds.db.*
 import cats.effect.*
 import cats.syntax.all.*
 import doobie.*
@@ -59,10 +60,13 @@ final class ImportStore(xa: Transactor[IO], source: String) extends TxStore(xa) 
 
   // ---------------------------------------------------------------- ユーザー
 
-  /** 同じメールアドレスの人（ボットを除く）。 */
-  def userByEmail(email: String): IO[Option[UUID]] = tx(
-    sql"""select id from app_user where lower(email) = lower($email) and not is_bot order by last_login_at desc nulls last limit 1"""
-      .query[UUID].option
+  /**
+   * 同じメールアドレスの人（ボットを除く）。verifiedOnly なら、IdP がメールアドレスを確かめ済みの人だけ
+   * （未確認のメールアドレスを名乗った人に、他人の履歴を結び付けないように）。
+   */
+  def userByEmail(email: String, verifiedOnly: Boolean = true): IO[Option[UUID]] = tx(
+    sql"""select id from app_user where lower(email) = lower($email) and not is_bot and (email_verified or not $verifiedOnly)
+          order by last_login_at desc nulls last limit 1""".query[UUID].option
   )
 
   def insertUser(sourceId: String, u: ImportUser): IO[UUID] = tx {

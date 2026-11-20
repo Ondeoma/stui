@@ -33,6 +33,7 @@ enum ErrorCode(val code: String, val status: Int, val message: String) extends s
   case RequestTooLarge extends ErrorCode("STUI-1027", 413, "本文が大きすぎます")
   case StorageNotConfigured extends ErrorCode("STUI-1030", 503, "添付ファイルの保存先（S3）が設定されていません")
   case TooManyIds extends ErrorCode("STUI-1031", 400, "ids は100件までです")
+  case TooManyRequests extends ErrorCode("STUI-1032", 429, "短い時間に要求が多すぎます。しばらく待ってからお試しください")
   case ChannelNameTaken extends ErrorCode("STUI-2001", 409, "同じ名前のチャンネルがすでにあります")
   case ChannelNotFound extends ErrorCode("STUI-2002", 404, "チャンネルが見つかりません")
   case ChannelKindInvalid extends ErrorCode("STUI-2003", 400, "kind は public か private です")
@@ -125,4 +126,5 @@ enum ErrorCode(val code: String, val status: Int, val message: String) extends s
   case ReminderWorkerFailed extends ErrorCode("STUI-9109", 500, "リマインダーの処理に失敗しました")
   case ScheduledWorkerFailed extends ErrorCode("STUI-9110", 500, "定期メッセージの処理に失敗しました")
   case PurgeFailed extends ErrorCode("STUI-9111", 500, "古いデータの削除に失敗しました")
+  case McpToolFailed extends ErrorCode("STUI-9112", 500, "MCP のツールの実行に失敗しました")
 }

@@ -1,5 +1,6 @@
 package stui.api
 
+import sbirds.db.*
 import cats.effect.*
 import cats.syntax.all.*
 import io.circe.Json

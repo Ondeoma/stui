@@ -279,30 +279,10 @@ final case class DialogReq(message: String,
                            onCancel: () => Unit)
 
 /** この端末だけの表示の設定（localStorage. 使えないときは既定値）. */
-object Prefs {
-
-  def get(key: String, default: String): String =
-    scala.util.Try(Option(dom.window.localStorage.getItem("stui." + key))).toOption.flatten.getOrElse(default)
-
-  def set(key: String, value: String): Unit = scala.util.Try(dom.window.localStorage.setItem("stui." + key, value))
-
-}
+object Prefs extends sbirds.web.LocalPrefs("stui")
 
 /** 画面の色（自動 = OS の設定、ライト、ダーク）. この端末に記憶する. */
-object Theme {
-
-  val current: RV[String] = RV(Prefs.get("theme", "system"))
-
-  def apply(): Unit = {
-    val el = dom.document.documentElement
-    if (current.v == "system") el.removeAttribute("data-theme") else el.setAttribute("data-theme", current.v)
-  }
-
-  def set(v: String): Unit = { current := v; Prefs.set("theme", v); apply() }
-
-  val options: List[(String, String)] = List("system" -> "🖥 自動（OS に合わせる）", "light" -> "☀️ ライト", "dark" -> "🌙 ダーク")
-
-}
+object Theme extends sbirds.web.ThemeSwitch(Prefs)
 
 /** オートコンプリート（parts/Combo.st）の選択肢. icon は前に付ける文字、user はアイコン、color はラベルの色. */
 final case class Opt(value: String,

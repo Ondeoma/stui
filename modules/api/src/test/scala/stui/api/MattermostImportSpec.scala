@@ -1,5 +1,6 @@
 package stui.api
 
+import sbirds.db.*
 import cats.effect.*
 import cats.syntax.all.*
 import doobie.*
@@ -95,7 +96,15 @@ class MattermostImportSpec extends CatsEffectSuite {
         _ <- run(xa, s"create schema $schema")
         _ <- ddl.traverse_(d => run(srcXa, d))
         // 既存の stui のユーザー（同じメールアドレス → 結び付ける）と、名前がぶつかるチャンネル
-        alice <- users.upsert(s"test:${UUID.randomUUID()}", "アリス（stui）", Some(s"alice-$r@example.com"), None)
+        alice <- users.upsert(
+          s"test:${UUID.randomUUID()}",
+          "アリス（stui）",
+          Some(s"alice-$r@example.com"),
+          None,
+          emailVerified = true
+        )
+        // メールアドレスが未確認の人（キャロルのメールアドレスを名乗っている）には結び付けない
+        fake <- users.upsert(s"test:${UUID.randomUUID()}", "にせキャロル", Some(s"carol-$r@example.com"), None)
         _ <- new ChannelStore(xa).create(clash, "public", "", "", alice.id, List(alice.id))
         _ <- IO(Files.createDirectories(dir.resolve("2026/f1")))
         _ <- IO(Files.writeString(dir.resolve("2026/f1/memo.txt"), "メモの中身"))
@@ -225,6 +234,11 @@ class MattermostImportSpec extends CatsEffectSuite {
         _ = assertEquals(att._2, "memo.txt")
         emoji <- sql"select count(*) from custom_emoji where name = ${s"partyparrot$r"}".query[Int].unique.transact(xa)
         _ = assertEquals(emoji, 1)
+        _ = assertNotEquals(maps(("user", "uc")), fake.id)
+        byEmail = new ImportStore(xa, "mattermost")
+        _ <- byEmail.userByEmail(s"carol-$r@example.com").assertEquals(None)
+        // --link-by-email のときだけ、未確認の人にも結び付ける
+        _ <- byEmail.userByEmail(s"carol-$r@example.com", verifiedOnly = false).assertEquals(Some(fake.id))
         carol <- users.find(maps(("user", "uc")))
         _ = assertEquals(carol.map(u => (u.name, u.disabled)), Some(("キャロル", true)))
         // やり直しても二重に作らない。あとから増えた投稿だけを足す
@@ -236,7 +250,16 @@ class MattermostImportSpec extends CatsEffectSuite {
           (0, 0, 0, 1, 0, 0, 0)
         )
         // 取り込んだユーザーは、同じメールアドレスで最初にログインしたときに引き継がれる
-        bob <- users.upsert(s"oidc:${UUID.randomUUID()}", "Bob Smith", Some(s"BOB-$r@example.com"), None)
+        // メールアドレスが未確認のログインでは引き継がない（別のユーザーになる）
+        evil <- users.upsert(s"oidc:${UUID.randomUUID()}", "にせ Bob", Some(s"bob-$r@example.com"), None)
+        _ = assertNotEquals(evil.id, maps(("user", "ub")))
+        bob <- users.upsert(
+          s"oidc:${UUID.randomUUID()}",
+          "Bob Smith",
+          Some(s"BOB-$r@example.com"),
+          None,
+          emailVerified = true
+        )
         _ = assertEquals(bob.id, maps(("user", "ub")))
         _ <- run(xa, s"drop schema $schema cascade")
       } yield ()

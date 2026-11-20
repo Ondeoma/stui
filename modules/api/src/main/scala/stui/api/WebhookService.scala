@@ -1,5 +1,6 @@
 package stui.api
 
+import sbirds.db.*
 import sbirds.shared.AppError
 
 import cats.effect.*
@@ -22,6 +23,7 @@ import scala.concurrent.duration.*
 /**
  * Webhook。受信は Slack・Mattermost と同じ形の JSON（text・username・icon_url・attachments）でチャンネルに投稿する。
  * 送信はイベントを JSON で POST し（HMAC-SHA256 の署名付き）、応答に text があればボットとして返信する。
+ * http は送信先（利用者が設定した URL）へ送るクライアント（Main で sbirds.net.NetGuard.client から作る。リダイレクトは追わない）。
  */
 final class WebhookService(hooks: HookStore,
                            users: UserStore,
@@ -114,23 +116,12 @@ final class WebhookService(hooks: HookStore,
     }.handleErrorWith(e => sbirds.observe.Log.report(ErrorCode.WebhookReplyFailed, e.toString, e))
 
   /**
-   * 送信先が内部のネットワーク（ループバック・プライベート・リンクローカルなど）でないか。名前を引いた結果のすべての IP で確かめる。
+   * 送信先が内部のネットワーク（ループバック・プライベート・リンクローカルなど）でないか。名前を引いた結果のすべての IP で確かめる（sbirds.net.NetGuard）。
    * 開発では WEBHOOK_ALLOW_PRIVATE=true で許す。
    */
   def publicHost(url: String): IO[Boolean] =
     if cfg.webhookAllowPrivate then IO.pure(true)
-    else
-      Uri.fromString(url).toOption.flatMap(_.host).map(_.value.stripPrefix("[").stripSuffix("]")) match {
-        case None => IO.pure(false)
-        case Some(h) =>
-          IO.blocking(java.net.InetAddress.getAllByName(h).toList).map(_.forall { a =>
-            val b = a.getAddress
-            val ula = b.length == 16 && (b(0) & 0xfe) == 0xfc // fc00::/7
-            val cgnat = b.length == 4 && (b(0) & 0xff) == 100 && (b(1) & 0xc0) == 64 // 100.64.0.0/10
-            !(a.isLoopbackAddress || a.isSiteLocalAddress || a.isLinkLocalAddress || a.isAnyLocalAddress ||
-              a.isMulticastAddress || ula || cgnat)
-          }).handleError(_ => false)
-      }
+    else sbirds.net.NetGuard.isAllowed(url, sbirds.net.NetGuard.Policy.publicOnly)
 
   def send(d: DeliveryRow): IO[(OutboxResult, Option[Int])] =
     publicHost(d.url).flatMap {
@@ -174,6 +165,9 @@ final class WebhookService(hooks: HookStore,
       case Right((c, _)) => IO.pure((OutboxResult.Retry(s"HTTP $c"), Some(c)))
       // 中身（内部の様子がわかる文言）は記録しない
       case Left(_: java.util.concurrent.TimeoutException) => IO.pure((OutboxResult.Retry("時間切れ"), None))
+      // 確かめた後に名前の向き先が変わったとき（http は確かめた IP にそのままつなぐ）
+      case Left(_: sbirds.net.NetGuard.Rejected) =>
+        IO.pure((OutboxResult.Skip("送信先が内部のネットワークのため送りませんでした"), None))
       case Left(_) => IO.pure((OutboxResult.Retry("接続できませんでした"), None))
     }
   }

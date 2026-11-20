@@ -101,6 +101,8 @@ java -cp 'dist/lib/*' stui.app.Main
 | `MAX_UPLOAD_MB` | 添付の上限（既定 100） |
 | `WEBHOOK_ALLOW_HTTP` | 送信の Webhook の送信先に http:// を許す（開発用） |
 | `WEBHOOK_ALLOW_PRIVATE` | 送信の Webhook の送信先に内部のネットワーク（localhost・プライベートな IP）を許す（開発用。既定では SSRF を防ぐため断る） |
+| `RATE_LIMIT_AUTH` / `RATE_LIMIT_PUBLIC` | IP ごとの1分あたりの回数の上限。ログインと OAuth の認可の画面（`/auth/…`・`/oauth/authorize`、既定 20）と、OAuth のトークンの発行・失効（`/oauth/token`・`/oauth/revoke`、既定 120）。0 で制限しない。ノードごとに数える。受信の Webhook（`/hooks/…`）と、ログインした人・APIキー（Bot を含む）の API は数えない |
+| `TRUSTED_PROXIES` | リバースプロキシの IP か CIDR（カンマ区切り）。そこから来た要求だけ `X-Forwarded-For` から利用者の IP を読む。リバースプロキシの後ろに置くときは必ず設定する（未設定だと全員がプロキシの IP として数えられ、上限にすぐ達する） |
 | `OAUTH_CLIENTS` | stui を使う兄弟のサービス。`[{"id":"skea","secret":"…（16文字以上）","redirectUri":"https://…/callback","name":"skea","scopes":["read","write"]}]` |
 | `SKIWI_*`・`SKAWAU_*`・`SKEA_*`・`SKAKA_*`（`_URL`・`_CLIENT_ID`・`_CLIENT_SECRET`・`_INTERNAL_URL`） | stui から使う兄弟のサービス（リンクの名前・会議室）。[docs/integrations.md](docs/integrations.md) |
 | `NODE_ID` | ノード名（ログ・定期処理のリース） |
@@ -132,6 +134,7 @@ java -cp 'dist/lib/*' stui.app.ImportMattermost --files /opt/mattermost/data
 |---|---|
 | `--team <名前>` | 取り込むチーム（Mattermost の URL に出るチームの名前）。複数指定できる。省くとすべてのチーム |
 | `--files <ディレクトリ>` | Mattermost のファイルの置き場所（`config.json` の `FileSettings.Directory`。サーバーから写したものでよい）。添付ファイルとカスタム絵文字を取り込む（S3 の設定が必要） |
+| `--link-by-email` | メールアドレスが未確認の既存のユーザーにも、同じメールアドレスで結び付ける。既定では、IdP がメールアドレスを確かめ済み（`email_verified`）としてログインした人にだけ結び付ける（確かめ済みかどうかは次のログインで記録される） |
 | `--dry-run` | 書き込まずに、取り込む数だけを表示する |
 
 - **取り込むもの**: ユーザー、チャンネル（公開・非公開・DM・グループ DM。アーカイブも）とメンバー、投稿（スレッド・ピン留め・編集済み・Webhook の投稿と attachments）、

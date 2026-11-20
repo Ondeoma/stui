@@ -230,7 +230,7 @@ final class LinkServiceRoutes(store: IntegrationTokenStore,
     // 同じサイトのパスだけ。開発中（DEV_LOGIN）は画面の開発サーバー（http://localhost:…）にも戻せる
     val devOrigin = cfg.devLogin &&
       (returnTo.startsWith("http://localhost:") || returnTo.startsWith("http://127.0.0.1:"))
-    val back = Option(returnTo).filter(p => localPath(p) || devOrigin).getOrElse("/settings")
+    val back = Option(returnTo).filter(p => sbirds.shared.SafePath.isLocal(p) || devOrigin).getOrElse("/settings")
     redirect(back + (if back.contains("?") then "&" else "?") + s"integration=$p&result=$result")
   }
 
