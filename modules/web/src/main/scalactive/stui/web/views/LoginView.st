@@ -10,7 +10,7 @@ case class State(name: RV[String] = RV(""), email: RV[String] = RV(""), admin: R
 
 def initState() = State()
 
-def returnTo(): String = Option(new dom.URL(dom.window.location.href).searchParams.get("returnTo")).filter(_.startsWith("/")).getOrElse("/")
+def returnTo(): String = Router.queryParam("returnTo").v.filter(_.startsWith("/")).getOrElse("/")
 
 def login(s: State): Unit =
   Api.devLogin(s.name.v.trim, s.email.v.trim, s.admin.v, returnTo()).onComplete {
@@ -28,7 +28,7 @@ def mounted(): Unit = pageTitle("ログイン")
       <h1>{{ AppNames.self }} にログイン</h1>
       <p class="muted small">開発用のログインです（IdP が設定されていない環境だけで使えます）。</p>
       <form @submit.prevent="login(s)">
-        <label class="field"><span>名前</span><input type="text" v-model="s.name" placeholder="山田 太郎" autofocus></label>
+        <label class="field"><span>名前</span><input type="text" v-model="s.name" placeholder="山田 太郎" v-focus></label>
         <label class="field"><span>メールアドレス（任意）</span><input type="email" v-model="s.email"></label>
         <label class="row small"><input type="checkbox" v-model="s.admin"> 管理者としてログイン</label>
         <p v-if="s.error.mapC(_.nonEmpty)" class="error">{{ s.error }}</p>

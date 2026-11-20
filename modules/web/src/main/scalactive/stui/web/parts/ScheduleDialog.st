@@ -11,19 +11,18 @@ case class Props(channelId: UUID, rootId: Option[UUID] = None, body: Option[Json
                  onClose: Unit => Unit = _ => (), onSaved: Unit => Unit = _ => ())
 
 case class State(freq: RV[String], date: RV[String], time: RV[String], weekday: RV[String], monthday: RV[String], enabled: RV[Boolean],
-                 editor: RV[Option[EditorHandle]] = RV(None), busy: RV[Boolean] = RV(false))
+                 act: ActionState, editor: RV[Option[EditorHandle]] = RV(None))
 
 def initState(props: Props) = props.editing match {
   case Some(e) => State(RV(e.frequency), RV(e.runDate.getOrElse(Fmt.today())), RV(e.runTime), RV(e.weekday.getOrElse(1).toString),
-    RV(e.monthday.getOrElse(1).toString), RV(e.enabled))
-  case None => State(RV(Frequency.Once), RV(Fmt.addDays(Fmt.today(), 1)), RV("09:00"), RV("1"), RV("1"), RV(true))
+    RV(e.monthday.getOrElse(1).toString), RV(e.enabled), useAction())
+  case None => State(RV(Frequency.Once), RV(Fmt.addDays(Fmt.today(), 1)), RV("09:00"), RV("1"), RV("1"), RV(true), useAction())
 }
 
 def content(props: Props): Option[Json] = props.editing.map(_.body).orElse(props.body)
 
 def save(s: State, props: Props): Unit = s.editor.v.foreach { ed =>
-  if (!s.busy.v) {
-    s.busy := true
+  if (!s.act.busy.v) {
     val r = ScheduledReq(props.editing.map(_.channel.id).getOrElse(props.channelId), Editor.fromJs(ed.getJSON()), s.freq.v,
       Option.when(s.freq.v == Frequency.Once)(s.date.v), s.time.v, Option.when(s.freq.v == Frequency.Weekly)(s.weekday.v.toInt),
       Option.when(s.freq.v == Frequency.Monthly)(s.monthday.v.toIntOption.getOrElse(1)), s.enabled.v, props.editing.flatMap(_.rootId).orElse(props.rootId))
@@ -31,13 +30,12 @@ def save(s: State, props: Props): Unit = s.editor.v.foreach { ed =>
       case Some(e) => Api.putUnit(s"/api/scheduled/${e.id}", io.circe.syntax.EncoderOps(r).asJson)
       case None    => Api.post[List[ScheduledDto]]("/api/scheduled", io.circe.syntax.EncoderOps(r).asJson).map(_ => ())
     }
-    f.onComplete { res =>
-      s.busy := false
+    s.act.run(f).onComplete { res =>
       res match {
         case scala.util.Success(_) =>
-          Store.toast(if (s.freq.v == Frequency.Once) "送信を予約しました" else "定期メッセージを登録しました")
+          Toasts.show(if (s.freq.v == Frequency.Once) "送信を予約しました" else "定期メッセージを登録しました")
           props.onSaved(()); props.onClose(())
-        case scala.util.Failure(e) => Store.error(e)
+        case scala.util.Failure(e) => Toasts.error(e)
       }
     }
   }
@@ -65,7 +63,7 @@ def isMonthly(s: State) = s.freq.mapC(_ == Frequency.Monthly)
     <label class="check"><input type="checkbox" v-model="s.enabled"> 有効にする</label>
     <div class="actions">
       <button type="button" @click="props.onClose(())">キャンセル</button>
-      <button type="button" class="primary" :disabled="s.busy" @click="save(s, props)">保存</button>
+      <button type="button" class="primary" :disabled="s.act.busy" @click="save(s, props)">保存</button>
     </div>
   </Modal>
 </template>

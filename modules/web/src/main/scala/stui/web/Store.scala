@@ -8,9 +8,6 @@ import java.util.UUID
 import scala.concurrent.Future
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 import scala.scalajs.js
-import scala.util.{Failure, Success}
-
-final case class Toast(id: Int, text: String, link: Option[String], error: Boolean)
 
 /**
  * 画面全体で共有する状態と、変更の自動同期.
@@ -25,7 +22,6 @@ object Store {
   val unread: RV[UnreadDto] = RV(UnreadDto(0, 0))
   val threadsUnread: RV[Int] = RV(0)
   val savedCount: RV[Int] = RV(0)
-  val toasts: RV[List[Toast]] = RV(Nil)
 
   /** サイドバーを開いているか（スマホの幅）. */
   val sideOpen: RV[Boolean] = RV(false)
@@ -37,7 +33,6 @@ object Store {
   val dialog: RV[String] = RV("")
 
   private var since: Long = 0L
-  private var toastSeq = 0
   private var eventSeq = 0
 
   /** 表示中のチャンネル（参加していない公開チャンネルの変更も受け取るため）. */
@@ -64,28 +59,6 @@ object Store {
 
   def prefix(kind: String): String =
     if (ChannelKind.isDm(kind)) "" else if (kind == ChannelKind.Private) "🔒 " else "# "
-
-  // ---------------------------------------------------------------- トースト
-
-  def toast(text: String, link: Option[String] = None, error: Boolean = false): Unit = {
-    toastSeq += 1
-    val t = Toast(toastSeq, text, link, error)
-    toasts := (toasts.v :+ t).takeRight(5)
-    dom.window.setTimeout(() => dismiss(t.id), if (error) 9000 else 6000)
-  }
-
-  def dismiss(id: Int): Unit = toasts := toasts.v.filterNot(_.id == id)
-
-  def error(e: Throwable): Unit = e match {
-    case ApiError(401, _) => ()
-    case other => toast(other.getMessage, error = true)
-  }
-
-  /** Future の失敗をトーストで知らせる. */
-  def report[A](f: Future[A])(ok: A => Unit): Unit = f.onComplete {
-    case Success(a) => ok(a)
-    case Failure(e) => error(e)
-  }
 
   // ---------------------------------------------------------------- 読み込み
 
@@ -159,7 +132,7 @@ object Store {
   def openChannel(id: UUID): Unit = { sideOpen := false; Router.go(s"/c/$id") }
 
   /** DM を開く（相手. 空なら自分だけ）. */
-  def openDm(users: List[UUID]): Unit = report(Api.openDm(users)) { c => replace(c); openChannel(c.id) }
+  def openDm(users: List[UUID]): Unit = Toasts.report(Api.openDm(users)) { c => replace(c); openChannel(c.id) }
 
   /** 表示中のチャンネルを知らせる（参加していない公開チャンネルの変更も受け取る）. */
   def view(id: Option[UUID]): Unit = if (viewing != id) {
@@ -268,50 +241,13 @@ object Store {
 
 }
 
-/** 画面内のダイアログ（ブラウザ標準の confirm・prompt・alert の代わり）. 表示は parts/DialogHost.st. */
-final case class DialogReq(message: String,
-                           okLabel: String,
-                           danger: Boolean,
-                           input: Option[RV[String]],
-                           choices: List[(String, String)],
-                           cancel: Boolean,
-                           onOk: String => Unit,
-                           onCancel: () => Unit)
-
 /** この端末だけの表示の設定（localStorage. 使えないときは既定値）. */
 object Prefs extends sbirds.web.LocalPrefs("stui")
 
 /** 画面の色（自動 = OS の設定、ライト、ダーク）. この端末に記憶する. */
 object Theme extends sbirds.web.ThemeSwitch(Prefs)
 
-/** オートコンプリート（parts/Combo.st）の選択肢. icon は前に付ける文字、user はアイコン、color はラベルの色. */
-final case class Opt(value: String,
-                     label: String,
-                     icon: String = "",
-                     user: Option[UserBrief] = None,
-                     color: String = "",
-                     hint: String = "")
-
-object Opt {
-  def users(us: List[UserBrief]): List[Opt] = us.map(u => Opt(u.id.toString, u.name, user = Some(u)))
-  def of(xs: List[(String, String)]): List[Opt] = xs.map((v, l) => Opt(v, l))
-
-  /** 値と表示が同じ選択肢. */
-  def names(xs: List[String]): List[Opt] = xs.map(x => Opt(x, x))
-}
-
-/** カスタム絵文字（リアクション用. 一度だけ読む）. */
+/** カスタム絵文字（リアクション用. sbirds-lib の CustomEmojis）. */
 object Emojis {
-
-  val custom: RV[List[CustomEmojiDto]] = RV(Nil)
-  private var loaded = false
-
-  def load(force: Boolean = false): Unit = if (!loaded || force) {
-    loaded = true
-    Api.get[List[CustomEmojiDto]]("/api/emoji").foreach(custom := _)
-  }
-
-  /** ":name:" ならカスタム絵文字の画像の URL. */
-  def image(e: String): Option[String] = Reactions.customName(e).map(CustomEmoji.url)
-
+  export sbirds.web.CustomEmojis.{custom, image, load}
 }

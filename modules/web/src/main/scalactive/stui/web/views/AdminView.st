@@ -44,14 +44,14 @@ def loadAgents(s: State): Unit = Api.get[List[AgentDto]]("/api/admin/agents").fo
 def agentUrl(a: AgentDto, rest: String = ""): String = s"/api/admin/agents/${a.id}$rest"
 
 def addAgent(s: State): Unit =
-  Store.report(Api.post[AgentDto]("/api/admin/agents", CreateAgentReq(s.agentName.v).asJson)) { _ => s.agentName := ""; loadAgents(s) }
+  Toasts.report(Api.post[AgentDto]("/api/admin/agents", CreateAgentReq(s.agentName.v).asJson)) { _ => s.agentName := ""; loadAgents(s) }
 
 def renameAgent(s: State, a: AgentDto): Unit = Dialog.prompt("新しい名前", a.name, "変更する") { n =>
-  Store.report(Api.patch[AgentDto](agentUrl(a), UpdateAgentReq(Some(n), None).asJson))(_ => loadAgents(s))
+  Toasts.report(Api.patch[AgentDto](agentUrl(a), UpdateAgentReq(Some(n), None).asJson))(_ => loadAgents(s))
 }
 
 def setAgentDisabled(s: State, a: AgentDto, on: Boolean): Unit =
-  Store.report(Api.patch[AgentDto](agentUrl(a), UpdateAgentReq(None, Some(on)).asJson))(_ => loadAgents(s))
+  Toasts.report(Api.patch[AgentDto](agentUrl(a), UpdateAgentReq(None, Some(on)).asJson))(_ => loadAgents(s))
 
 def openKey(s: State, a: AgentDto): Unit = { s.keyFor := Some(a.id); s.joinFor := None; s.keyError := ""; s.created := None }
 
@@ -65,7 +65,7 @@ def issueKey(s: State, a: AgentDto): Unit = {
 
 def revokeKey(s: State, a: AgentDto, k: AgentKeyDto): Unit =
   Dialog.confirm(s"「${a.name}」の APIキー「${k.name}」を取り消しますか？このキーを使っているエージェントは使えなくなります。", "取り消す") {
-    Store.report(Api.delete(agentUrl(a, s"/keys/${k.id}")))(_ => loadAgents(s))
+    Toasts.report(Api.delete(agentUrl(a, s"/keys/${k.id}")))(_ => loadAgents(s))
   }
 
 def openJoin(s: State, a: AgentDto): Unit = { s.joinFor := Some(a.id); s.keyFor := None; s.joinIds := Nil }
@@ -74,10 +74,10 @@ def toggleJoin(s: State, c: ChannelDto, on: Boolean): Unit =
   s.joinIds := (if (on) (c.id :: s.joinIds.v).distinct else s.joinIds.v.filterNot(_ == c.id))
 
 def join(s: State, a: AgentDto): Unit =
-  Store.report(Api.post[AgentDto](agentUrl(a, "/channels"), AgentChannelsReq(s.joinIds.v).asJson)) { _ => s.joinFor := None; loadAgents(s) }
+  Toasts.report(Api.post[AgentDto](agentUrl(a, "/channels"), AgentChannelsReq(s.joinIds.v).asJson)) { _ => s.joinFor := None; loadAgents(s) }
 
 def leave(s: State, a: AgentDto, c: ChannelBrief): Unit = Dialog.confirm(s"「${a.name}」を ${Store.prefix(c.kind)}${c.name} から外しますか？", "外す") {
-  Store.report(Api.send(org.scalajs.dom.HttpMethod.DELETE, agentUrl(a, s"/channels/${c.id}")))(_ => loadAgents(s))
+  Toasts.report(Api.send(org.scalajs.dom.HttpMethod.DELETE, agentUrl(a, s"/channels/${c.id}")))(_ => loadAgents(s))
 }
 
 /** 参加させられるチャンネル（アーカイブしていない、まだ参加していないもの）. */
@@ -90,24 +90,24 @@ def keyState(k: AgentKeyDto): String =
 def mounted(s: State): Unit = { pageTitle("管理"); load(s) }
 
 def setUser(s: State, u: UserDto, admin: Option[Boolean], disabled: Option[Boolean]): Unit =
-  Store.report(Api.patchUnit(s"/api/admin/users/${u.id}", UpdateUserReq(admin, disabled).asJson))(_ => load(s))
+  Toasts.report(Api.patchUnit(s"/api/admin/users/${u.id}", UpdateUserReq(admin, disabled).asJson))(_ => load(s))
 
 def archive(s: State, c: ChannelDto, on: Boolean): Unit =
-  Store.report(Api.updateChannel(c.id, UpdateChannelReq(None, None, None, Some(on), None))) { _ => load(s); Store.loadChannels() }
+  Toasts.report(Api.updateChannel(c.id, UpdateChannelReq(None, None, None, Some(on), None))) { _ => load(s); Store.loadChannels() }
 
 def remove(s: State, c: ChannelDto): Unit =
   Dialog.prompt(s"#${c.name} とすべてのメッセージを完全に削除します。元に戻せません。\n確認のため名前を入力してください。", "", "完全に削除する") { k =>
-    if (k.trim == c.name) Store.report(Api.delete(s"/api/channels/${c.id}")) { _ => load(s); Store.loadChannels() }
-    else Store.toast("名前が一致しないため削除しませんでした", error = true)
+    if (k.trim == c.name) Toasts.report(Api.delete(s"/api/channels/${c.id}")) { _ => load(s); Store.loadChannels() }
+    else Toasts.show("名前が一致しないため削除しませんでした", error = true)
   }
 
 def addHook(s: State): Unit =
-  Store.report(Api.post[List[OutgoingHookDto]]("/api/hooks/outgoing", OutgoingHookReq(None, s.hookName.v.trim, s.hookUrl.v.trim, Nil, Nil, true).asJson)) { _ =>
+  Toasts.report(Api.post[List[OutgoingHookDto]]("/api/hooks/outgoing", OutgoingHookReq(None, s.hookName.v.trim, s.hookUrl.v.trim, Nil, Nil, true).asJson)) { _ =>
     s.hookName := ""; s.hookUrl := ""; load(s)
   }
 
 def removeHook(s: State, h: OutgoingHookDto): Unit = Dialog.confirm(s"Webhook「${h.name}」を削除しますか？", "削除する") {
-  Store.report(Api.delete(s"/api/hooks/outgoing/${h.id}"))(_ => load(s))
+  Toasts.report(Api.delete(s"/api/hooks/outgoing/${h.id}"))(_ => load(s))
 }
 
 def tab(s: State, v: String) = s.tab.mapC(x => if (x == v) "active" else "")
@@ -134,7 +134,7 @@ def me(u: UserDto): Boolean = Store.myId.contains(u.id)
           <thead><tr><th>名前</th><th>メール</th><th>グループ</th><th>最終ログイン</th><th>管理者</th><th>無効</th></tr></thead>
           <tbody>
             <tr v-for="u in s.users" :key="u.id">
-              <td><Avatar :user="Some(UserBrief(u.id, u.name, u.avatarUrl, u.bot))" :size="22" /> {{ u.name }}</td>
+              <td><Avatar :user="Some(Person(u.id.toString, u.name, u.avatarUrl))" :size="22" /> {{ u.name }}</td>
               <td class="small">{{ u.email.getOrElse("") }}</td>
               <td class="small">{{ u.groups.mkString(", ") }}</td>
               <td class="small">{{ u.lastLoginAt.map(Fmt.ago).getOrElse("") }}</td>

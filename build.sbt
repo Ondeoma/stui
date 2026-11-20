@@ -65,7 +65,7 @@ lazy val web = (project in file("modules/web"))
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)),
     scalaJSUseMainModuleInitializer := true,
     libraryDependencies ++= Seq(
-      "io.github.ondeoma" %%% "scalactive" % "0.6.2"
+      "io.github.ondeoma" %%% "scalactive" % "0.7.0"
     )
   )
 

@@ -63,9 +63,9 @@ def sent(s: State, m: MessageDto): Unit = {
   s.scroller.foreach(el => dom.window.setTimeout(() => el.scrollTop = el.scrollHeight.toDouble, 30))
 }
 
-def toggleFollow(s: State, props: Props): Unit = Store.report(Api.follow(props.rootId, !s.following.v)) { _ =>
+def toggleFollow(s: State, props: Props): Unit = Toasts.report(Api.follow(props.rootId, !s.following.v)) { _ =>
   s.following := !s.following.v
-  Store.toast(if (s.following.v) "スレッドをフォローしました（返信を通知します）" else "フォローをやめました")
+  Toasts.show(if (s.following.v) "スレッドをフォローしました（返信を通知します）" else "フォローをやめました")
 }
 
 def editLast(s: State): Unit =

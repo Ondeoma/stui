@@ -37,10 +37,10 @@ def mounted(s: State): Unit = {
   Api.clientConfig().foreach { c =>
     Store.config := Some(c)
     // skiwi・skawau・skea・skorimako と連携していれば、そのリンクに名前を出す
-    if (c.linkServices.nonEmpty) LinkTitles.load()
+    if (c.linkServices.nonEmpty) loadLinkTitles()
   }
   if (dom.window.location.pathname.startsWith("/login")) s.ready := true
-  else Store.report(Api.me()) { me =>
+  else Toasts.report(Api.me()) { me =>
     Store.me := Some(me)
     AppNames.set(me.appNames)
     Observe.setUser(me.id.toString)
@@ -55,13 +55,14 @@ def mounted(s: State): Unit = {
     }
     Emojis.load()
   }
-  // Esc でサイドバー・メニューを閉じる、Ctrl+K で検索
-  dom.document.addEventListener("keydown", (e: dom.KeyboardEvent) => {
+  // Ctrl+K で検索
+  useEventListener[dom.KeyboardEvent](dom.document, "keydown") { e =>
     if ((e.ctrlKey || e.metaKey) && e.key == "k") {
       e.preventDefault()
       Option(dom.document.querySelector(".top .search input")).foreach(_.asInstanceOf[dom.HTMLInputElement].focus())
     }
-  })
+  }
+  ()
 }
 
 def search(s: State): Unit = {
@@ -72,7 +73,7 @@ def search(s: State): Unit = {
 def logout(): Unit = Api.logout().onComplete(r => dom.window.location.href = r.getOrElse("/"))
 
 def userName = Store.me.mapC(_.map(_.name).getOrElse(""))
-def meBrief = Store.me.mapC(_.map(m => UserBrief(m.id, m.name, m.avatarUrl, false)))
+def meBrief = Store.me.mapC(_.map(m => Person(m.id.toString, m.name, m.avatarUrl)))
 def unreadLabel = Store.unread.mapC(u => if (u.unread > 99) "99+" else u.unread.toString)
 def hasUnread = Store.unread.mapC(_.unread > 0)
 def loggedIn = Store.me.mapC(_.isDefined)
@@ -113,12 +114,7 @@ def sideClass = Store.sideOpen.mapC(o => if (o) "side open" else "side")
   <CreateChannelDialog v-if='Store.dialog.mapC(_ == "channel")' />
   <NewDmDialog v-if='Store.dialog.mapC(_ == "dm")' />
   <DialogHost />
-  <div class="toasts">
-    <div v-for="t in Store.toasts" :key="t.id" :class='if (t.error) "toast error" else "toast"'>
-      <span class="grow" @click="t.link.foreach(l => Router.go(l)); Store.dismiss(t.id)">{{ t.text }}</span>
-      <button @click="Store.dismiss(t.id)">×</button>
-    </div>
-  </div>
+  <ToastHost />
 </template>
 
 <style scoped>

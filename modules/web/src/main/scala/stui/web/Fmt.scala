@@ -9,6 +9,7 @@ object Fmt {
 
   // 日時の表示（2026/11/15 09:30・「3分前」）は sbirds-lib
   export sbirds.web.Dates.{ago, dateTime}
+  export sbirds.web.Formats.bytes
 
   /** 2026-11-15 → 11/15(日). */
   def day(d: String): String = {
@@ -30,11 +31,6 @@ object Fmt {
     dt.setDate(dt.getDate() + n)
     isoDate(dt)
   }
-
-  def initials(name: String): String = name.trim.take(1)
-
-  def bytes(n: Long): String =
-    if (n < 1024) s"$n B" else if (n < 1024 * 1024) f"${n / 1024.0}%.1f KB" else f"${n / 1024.0 / 1024.0}%.1f MB"
 
   /** 時刻だけ（13:05）. */
   def time(t: Timestamp): String = {

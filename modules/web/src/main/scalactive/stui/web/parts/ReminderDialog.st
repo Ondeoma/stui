@@ -20,9 +20,9 @@ def morning(days: Int): js.Date = { val d = new js.Date(); d.setDate(d.getDate()
 def nextMonday(): js.Date = { val d = new js.Date(); val add = ((8 - d.getDay().toInt) % 7) match { case 0 => 7; case x => x }; d.setDate(d.getDate() + add); d.setHours(9, 0, 0, 0); d }
 
 def save(s: State, props: Props, at: js.Date): Unit =
-  if (props.messageId.isEmpty && s.text.v.trim.isEmpty) Store.toast("内容を入力してください", error = true)
-  else Store.report(Api.remind(ReminderReq(Option(s.text.v.trim).filter(_.nonEmpty), props.messageId, Timestamp(at.toISOString())))) { _ =>
-    Store.toast(s"${Fmt.dateTime(Timestamp(at.toISOString()))} にリマインドします")
+  if (props.messageId.isEmpty && s.text.v.trim.isEmpty) Toasts.show("内容を入力してください", error = true)
+  else Toasts.report(Api.remind(ReminderReq(Option(s.text.v.trim).filter(_.nonEmpty), props.messageId, Timestamp(at.toISOString())))) { _ =>
+    Toasts.show(s"${Fmt.dateTime(Timestamp(at.toISOString()))} にリマインドします")
     props.onSaved(())
     props.onClose(())
   }

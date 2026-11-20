@@ -50,7 +50,7 @@ def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
       <div class="sec"><button class="sec-btn" @click='toggle(s.showFav, "side.fav")'>{{ caret(s.showFav) }} お気に入り</button></div>
       <template v-if="s.showFav">
         <a v-for="c in favorites" :key="c.id" :href='"/c/" + c.id' :class="cls(c)" @click.prevent="go(c)">
-          <span v-if="isDm(c)" class="ic"><Avatar :user="c.dmUsers.headOption" :size="18" /></span>
+          <span v-if="isDm(c)" class="ic"><Avatar :user="c.dmUsers.headOption.map(person)" :size="18" /></span>
           <span v-else class="ic">{{ icon(c) }}</span>
           <span class="name">{{ Store.title(c) }}</span>
           <span v-if="c.mentions > 0" class="badge">{{ mentionsOf(c) }}</span>
@@ -72,7 +72,7 @@ def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
       <button class="add" title="DM を始める" @click='Store.dialog := "dm"'>＋</button></div>
     <template v-if="s.showDms">
       <a v-for="c in dms" :key="c.id" :href='"/c/" + c.id' :class="cls(c)" @click.prevent="go(c)">
-        <span v-if="isDm(c)" class="ic"><Avatar :user="c.dmUsers.headOption" :size="18" /></span>
+        <span v-if="isDm(c)" class="ic"><Avatar :user="c.dmUsers.headOption.map(person)" :size="18" /></span>
         <span v-else class="ic">{{ icon(c) }}</span>
         <span class="name">{{ Store.title(c) }}</span>
         <span v-if="c.dmUsers.exists(_.bot)" class="app">APP</span>

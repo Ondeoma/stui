@@ -21,16 +21,16 @@ def load(s: State): Unit = {
 }
 
 def complete(s: State, r: ReminderDto): Unit =
-  Store.report(Api.patchUnit(s"/api/reminders/${r.id}", ReminderPatch(None, Some(!r.done)).asJson.dropNullValues))(_ => load(s))
+  Toasts.report(Api.patchUnit(s"/api/reminders/${r.id}", ReminderPatch(None, Some(!r.done)).asJson.dropNullValues))(_ => load(s))
 
 def snooze(s: State, r: ReminderDto, minutes: Int): Unit =
-  Store.report(Api.patchUnit(s"/api/reminders/${r.id}", ReminderPatch(Some(Timestamp(new js.Date(js.Date.now() + minutes * 60000.0).toISOString())), None)
-    .asJson.dropNullValues)) { _ => Store.toast("あとで知らせます"); load(s) }
+  Toasts.report(Api.patchUnit(s"/api/reminders/${r.id}", ReminderPatch(Some(Timestamp(new js.Date(js.Date.now() + minutes * 60000.0).toISOString())), None)
+    .asJson.dropNullValues)) { _ => Toasts.show("あとで知らせます"); load(s) }
 
-def remove(s: State, r: ReminderDto): Unit = Store.report(Api.delete(s"/api/reminders/${r.id}"))(_ => load(s))
+def remove(s: State, r: ReminderDto): Unit = Toasts.report(Api.delete(s"/api/reminders/${r.id}"))(_ => load(s))
 
 def removeSched(s: State, x: ScheduledDto): Unit = Dialog.confirm("この定期メッセージを削除しますか？", "削除する") {
-  Store.report(Api.delete(s"/api/scheduled/${x.id}"))(_ => load(s))
+  Toasts.report(Api.delete(s"/api/scheduled/${x.id}"))(_ => load(s))
 }
 
 def openRef(r: ReminderDto): Unit = r.message.foreach(m => Router.go(s"/m/${m.id}"))
@@ -70,7 +70,7 @@ def rowCls(r: ReminderDto): String = if (r.done) "rem done" else if (r.fired) "r
         <div class="grow">
           <div><b>{{ Fmt.schedule(x) }}</b> {{ Store.prefix(x.channel.kind) }}{{ Store.titleOf(x.channel) }}
             <span v-if="!x.enabled" class="badge">停止中</span></div>
-          <div class="rich muted" v-html="x.html"></div>
+          <div class="rich muted" v-html="x.html" v-rich="x.html"></div>
           <div class="muted small">次回: {{ x.nextRun.map(Fmt.dateTime).getOrElse("—") }}{{ x.lastError.fold("")(e => "・前回の失敗: " + e) }}</div>
         </div>
         <button class="small ghost" @click="s.edit := Some(x)">変える</button>

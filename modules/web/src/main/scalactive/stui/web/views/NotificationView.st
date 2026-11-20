@@ -6,19 +6,19 @@ import stui.shared.*
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 
 // アクティビティ（自分への通知）: メンション・DM・スレッドの返信・リマインダー・連携サービス. 種類と未読で絞り込む.
-case class State(kind: RV[String] = RV(""), unread: RV[Boolean] = RV(false), list: RV[NotificationListDto] = RV(NotificationListDto(Nil, 0)),
-                 loading: RV[Boolean] = RV(true))
+case class State(kind: RV[String], unread: RV[Boolean], list: AsyncState[NotificationListDto])
 
-def initState() = State()
+def initState() = {
+  val (kind, unread) = (RV(""), RV(false))
+  State(kind, unread, useAsync(Api.notifications(Option(kind.v).filter(_.nonEmpty).toList, unread.v)))
+}
 
 def mounted(s: State): Unit = {
   pageTitle("アクティビティ")
-  load(s)
   watch(Store.unread, false)((_, _) => load(s))
 }
 
-def load(s: State): Unit =
-  Api.notifications(Option(s.kind.v).filter(_.nonEmpty).toList, s.unread.v).foreach { l => s.list := l; s.loading := false }
+def load(s: State): Unit = s.list.reload()
 
 def setKind(s: State, k: String): Unit = { s.kind := k; load(s) }
 
@@ -27,7 +27,7 @@ def open(s: State, n: NotificationDto): Unit = {
   n.channel.foreach(c => Router.go(Paths.message(c.id, n.messageId, n.rootId)))
 }
 
-def readAll(s: State): Unit = Store.report(Api.postUnit("/api/notifications/read-all"))(_ => { load(s); Store.changed() })
+def readAll(s: State): Unit = Toasts.report(Api.postUnit("/api/notifications/read-all"))(_ => { load(s); Store.changed() })
 
 def kinds: List[(String, String)] = ("" -> "すべて") :: NotificationKind.all.map(k => k -> NotificationKind.label(k))
 def kindCls(s: State, k: String) = s.kind.mapC(x => if (x == k) "chip on" else "chip")
@@ -40,8 +40,8 @@ def icon(k: String): String = k match {
   case _                         => "🔗"
 }
 def iconCls(k: String): String = if (k == NotificationKind.Thread) "ico ico-thread" else ""
-def items(s: State) = s.list.mapC(_.items)
-def empty(s: State) = computed { s.list.v.items.isEmpty && !s.loading.v }
+def items(s: State) = s.list.data.mapC(_.map(_.items).getOrElse(Nil))
+def empty(s: State) = s.list.data.mapC(_.exists(_.items.isEmpty))
 </script>
 
 <template>
@@ -57,7 +57,7 @@ def empty(s: State) = computed { s.list.v.items.isEmpty && !s.loading.v }
     <p v-if="empty(s)" class="muted">通知はありません</p>
     <div v-for="n in items(s)" :key="n.id" :class='if (n.read) "n" else "n unread"' @click="open(s, n)">
       <span class="ic"><span :class="iconCls(n.kind)">{{ icon(n.kind) }}</span></span>
-      <Avatar :user="n.actor" :size="30" />
+      <Avatar :user="n.actor.map(person)" :size="30" />
       <div class="grow body">
         <div><b>{{ n.title }}</b> <span class="muted small">{{ Fmt.ago(n.at) }}</span></div>
         <div class="muted text">{{ n.body }}</div>

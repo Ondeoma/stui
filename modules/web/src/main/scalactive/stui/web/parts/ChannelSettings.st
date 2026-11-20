@@ -42,62 +42,62 @@ def loadHooks(s: State, props: Props): Unit = {
 }
 
 def saveGeneral(s: State, props: Props): Unit =
-  Store.report(Api.updateChannel(props.channel.id, UpdateChannelReq(Option.when(canManage(props))(s.name.v), Some(s.topic.v), Some(s.purpose.v), None, None))) { n =>
-    Store.replace(n); props.onChanged(n); Store.toast("保存しました")
+  Toasts.report(Api.updateChannel(props.channel.id, UpdateChannelReq(Option.when(canManage(props))(s.name.v), Some(s.topic.v), Some(s.purpose.v), None, None))) { n =>
+    Store.replace(n); props.onChanged(n); Toasts.show("保存しました")
   }
 
 def saveNotify(s: State, props: Props): Unit =
-  Store.report(Api.prefs(props.channel.id, MemberPrefReq(None, Some(s.muted.v), Some(s.notifyLevel.v), None))) { n =>
-    Store.replace(n); props.onChanged(n); Store.toast("通知の設定を保存しました")
+  Toasts.report(Api.prefs(props.channel.id, MemberPrefReq(None, Some(s.muted.v), Some(s.notifyLevel.v), None))) { n =>
+    Store.replace(n); props.onChanged(n); Toasts.show("通知の設定を保存しました")
   }
 
 def archive(props: Props, on: Boolean): Unit =
   Dialog.confirm(if (on) s"#${props.channel.name} をアーカイブしますか？（投稿できなくなります。メッセージは残ります）" else "アーカイブを戻しますか？",
     if (on) "アーカイブする" else "戻す") {
-    Store.report(Api.updateChannel(props.channel.id, UpdateChannelReq(None, None, None, Some(on), None))) { n => Store.replace(n); props.onChanged(n) }
+    Toasts.report(Api.updateChannel(props.channel.id, UpdateChannelReq(None, None, None, Some(on), None))) { n => Store.replace(n); props.onChanged(n) }
   }
 
 def autoJoin(props: Props, on: Boolean): Unit =
-  Store.report(Api.updateChannel(props.channel.id, UpdateChannelReq(None, None, None, None, Some(on)))) { n =>
-    Store.replace(n); props.onChanged(n); Store.toast(if (on) "全員を参加させ、新しい人も自動で参加するようにしました" else "自動参加をやめました")
+  Toasts.report(Api.updateChannel(props.channel.id, UpdateChannelReq(None, None, None, None, Some(on)))) { n =>
+    Store.replace(n); props.onChanged(n); Toasts.show(if (on) "全員を参加させ、新しい人も自動で参加するようにしました" else "自動参加をやめました")
   }
 
 def remove(props: Props): Unit =
   Dialog.confirm(s"#${props.channel.name} を削除しますか？ メッセージもすべて消え、元に戻せません。", "削除する") {
-    Store.report(Api.delete(s"/api/channels/${props.channel.id}")) { _ => props.onClose(()); Store.loadChannels(); Router.go("/") }
+    Toasts.report(Api.delete(s"/api/channels/${props.channel.id}")) { _ => props.onClose(()); Store.loadChannels(); Router.go("/") }
   }
 
 def leave(props: Props): Unit =
   Dialog.confirm(s"#${props.channel.name} から退出しますか？", "退出する") {
-    Store.report(Api.leave(props.channel.id)) { _ => props.onClose(()); Store.loadChannels(); Router.go("/") }
+    Toasts.report(Api.leave(props.channel.id)) { _ => props.onClose(()); Store.loadChannels(); Router.go("/") }
   }
 
 def hide(props: Props): Unit =
-  Store.report(Api.prefs(props.channel.id, MemberPrefReq(None, None, None, Some(true)))) { _ => props.onClose(()); Store.loadChannels(); Router.go("/") }
+  Toasts.report(Api.prefs(props.channel.id, MemberPrefReq(None, None, None, Some(true)))) { _ => props.onClose(()); Store.loadChannels(); Router.go("/") }
 
 def addMember(s: State, props: Props, u: UserBrief): Unit =
-  Store.report(Api.addMembers(props.channel.id, List(u.id))) { _ => Store.forgetMembers(props.channel.id); loadMembers(s, props) }
+  Toasts.report(Api.addMembers(props.channel.id, List(u.id))) { _ => Store.forgetMembers(props.channel.id); loadMembers(s, props) }
 
 def removeMember(s: State, props: Props, m: ChannelMemberDto): Unit =
   Dialog.confirm(s"${m.user.name} さんをチャンネルから外しますか？", "外す") {
-    Store.report(Api.delete(s"/api/channels/${props.channel.id}/members/${m.user.id}")) { _ => Store.forgetMembers(props.channel.id); loadMembers(s, props) }
+    Toasts.report(Api.delete(s"/api/channels/${props.channel.id}/members/${m.user.id}")) { _ => Store.forgetMembers(props.channel.id); loadMembers(s, props) }
   }
 
 def setRole(s: State, props: Props, m: ChannelMemberDto): Unit = {
   val role = if (m.role == ChannelRole.Admin) ChannelRole.Member else ChannelRole.Admin
-  Store.report(Api.putUnit(s"/api/channels/${props.channel.id}/members/${m.user.id}/role", SetRoleReq(role).asJson))(_ => loadMembers(s, props))
+  Toasts.report(Api.putUnit(s"/api/channels/${props.channel.id}/members/${m.user.id}/role", SetRoleReq(role).asJson))(_ => loadMembers(s, props))
 }
 
 def addIncoming(s: State, props: Props): Unit =
-  if (s.hookName.v.trim.isEmpty) Store.toast("名前を入力してください", error = true)
-  else Store.report(Api.post[CreatedIncomingHookDto]("/api/hooks/incoming",
+  if (s.hookName.v.trim.isEmpty) Toasts.show("名前を入力してください", error = true)
+  else Toasts.report(Api.post[CreatedIncomingHookDto]("/api/hooks/incoming",
     IncomingHookReq(props.channel.id, s.hookName.v.trim, None, None, true, Some(s.hookIcon.v)).asJson)) { h =>
     s.newUrl := h.url; s.hookName := ""; loadHooks(s, props)
   }
 
 /** 作った受信の Webhook のアイコンを変える. */
 def setIcon(s: State, props: Props, h: IncomingHookDto, icon: String): Unit =
-  Store.report(Api.putUnit(s"/api/hooks/incoming/${h.id}",
+  Toasts.report(Api.putUnit(s"/api/hooks/incoming/${h.id}",
     IncomingHookReq(h.channel.id, h.name, h.username, None, h.enabled, Some(icon)).asJson))(_ => loadHooks(s, props))
 
 def iconCls(s: State, e: String) = s.hookIcon.mapC(x => if (x == e) "ic-btn on" else "ic-btn")
@@ -106,25 +106,25 @@ def customs = Emojis.custom.mapC(_.map(c => s":${c.name}:" -> c))
 def selectIcons: List[(String, String)] = HookIcons.all ++ Emojis.custom.v.map(c => s":${c.name}:" -> s":${c.name}:")
 
 def deleteIncoming(s: State, props: Props, h: IncomingHookDto): Unit = Dialog.confirm(s"受信の Webhook「${h.name}」を削除しますか？", "削除する") {
-  Store.report(Api.delete(s"/api/hooks/incoming/${h.id}"))(_ => loadHooks(s, props))
+  Toasts.report(Api.delete(s"/api/hooks/incoming/${h.id}"))(_ => loadHooks(s, props))
 }
 
 def regenerate(s: State, props: Props, h: IncomingHookDto): Unit = Dialog.confirm("URL を作り直しますか？（前の URL は使えなくなります）", "作り直す") {
-  Store.report(Api.post[CreatedIncomingHookDto](s"/api/hooks/incoming/${h.id}/token")) { n => s.newUrl := n.url; loadHooks(s, props) }
+  Toasts.report(Api.post[CreatedIncomingHookDto](s"/api/hooks/incoming/${h.id}/token")) { n => s.newUrl := n.url; loadHooks(s, props) }
 }
 
 def addOutgoing(s: State, props: Props): Unit =
-  Store.report(Api.post[List[OutgoingHookDto]]("/api/hooks/outgoing", OutgoingHookReq(Some(props.channel.id), s.outName.v.trim, s.outUrl.v.trim,
+  Toasts.report(Api.post[List[OutgoingHookDto]]("/api/hooks/outgoing", OutgoingHookReq(Some(props.channel.id), s.outName.v.trim, s.outUrl.v.trim,
     List(EventKind.MessageCreated), s.outWords.v.split("[,、\\s]+").map(_.trim).filter(_.nonEmpty).toList, true).asJson)) { _ =>
     s.outName := ""; s.outUrl := ""; s.outWords := ""; loadHooks(s, props)
   }
 
 def deleteOutgoing(s: State, props: Props, h: OutgoingHookDto): Unit = Dialog.confirm(s"送信の Webhook「${h.name}」を削除しますか？", "削除する") {
-  Store.report(Api.delete(s"/api/hooks/outgoing/${h.id}"))(_ => loadHooks(s, props))
+  Toasts.report(Api.delete(s"/api/hooks/outgoing/${h.id}"))(_ => loadHooks(s, props))
 }
 
 def deleteSched(s: State, props: Props, x: ScheduledDto): Unit = Dialog.confirm("この定期メッセージを削除しますか？", "削除する") {
-  Store.report(Api.delete(s"/api/scheduled/${x.id}"))(_ => loadHooks(s, props))
+  Toasts.report(Api.delete(s"/api/scheduled/${x.id}"))(_ => loadHooks(s, props))
 }
 
 def schedLabel(x: ScheduledDto): String = Fmt.schedule(x) + (if (!x.enabled) "（停止中）" else "")
@@ -172,10 +172,10 @@ def baseUrl: String = org.scalajs.dom.window.location.origin
     </div>
 
     <div v-if='s.tab.mapC(_ == "members")' class="tabbody">
-      <UserPicker placeholder="追加する人を探す" :onPick="u => addMember(s, props, u)" />
+      <UserPicker placeholder="追加する人を探す" :search="UserSearch.search" :delay="150" :onPick="p => UserSearch(p).foreach(addMember(s, props, _))" />
       <div class="members">
         <div v-for="m in s.members" :key="m.user.id" class="member">
-          <Avatar :user="Some(m.user)" :size="26" /><span class="grow">{{ m.user.name }}</span>
+          <Avatar :user="Some(person(m.user))" :size="26" /><span class="grow">{{ m.user.name }}</span>
           <span v-if='m.role == "admin"' class="muted small">管理者</span>
           <button v-if="canManage(props) && !m.user.bot" class="small ghost" @click="setRole(s, props, m)">{{ if (m.role == "admin") "管理者を外す" else "管理者にする" }}</button>
           <button v-if="canManage(props)" class="small ghost" @click="removeMember(s, props, m)">外す</button>

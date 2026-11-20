@@ -62,39 +62,39 @@ def copyLink(s: State, props: Props): Unit = { s.menu := false; Dom.copy(link(pr
 
 def save(s: State, props: Props): Unit = {
   s.menu := false
-  Store.report(Api.save(props.m.id, !props.m.saved)) { _ =>
+  Toasts.report(Api.save(props.m.id, !props.m.saved)) { _ =>
     props.onChanged(props.m.copy(saved = !props.m.saved))
     Store.refreshSaved()
-    Store.toast(if (props.m.saved) "保存を外しました" else "保存しました（サイドバーの「保存済み」）")
+    Toasts.show(if (props.m.saved) "保存を外しました" else "保存しました（サイドバーの「保存済み」）")
   }
 }
 
 def pin(s: State, props: Props): Unit = {
   s.menu := false
-  Store.report(Api.pin(props.m.id, !props.m.pinned))(_ => props.onChanged(props.m.copy(pinned = !props.m.pinned)))
+  Toasts.report(Api.pin(props.m.id, !props.m.pinned))(_ => props.onChanged(props.m.copy(pinned = !props.m.pinned)))
 }
 
 def unread(s: State, props: Props): Unit = {
   s.menu := false
-  Store.report(Api.markUnread(props.m.channelId, props.m.seq)) { _ => Store.reloadChannels(); Store.toast("ここから未読にしました") }
+  Toasts.report(Api.markUnread(props.m.channelId, props.m.seq)) { _ => Store.reloadChannels(); Toasts.show("ここから未読にしました") }
 }
 
 def remove(s: State, props: Props): Unit = {
   s.menu := false
   Dialog.confirm("このメッセージを削除しますか？", "削除する") {
-    Store.report(Api.deleteMessage(props.m.id))(_ => props.onRemoved(props.m.id))
+    Toasts.report(Api.deleteMessage(props.m.id))(_ => props.onRemoved(props.m.id))
   }
 }
 
 /** 編集中に貼った画像は本文に埋め込む（画像以外は編集では添付できない）. */
 def uploadImage(props: Props)(f: dom.File): scala.concurrent.Future[Option[AttachmentDto]] = {
   import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
-  if (!f.`type`.startsWith("image/")) { Store.toast("編集中に添付できるのは画像だけです", error = true); scala.concurrent.Future.successful(None) }
+  if (!f.`type`.startsWith("image/")) { Toasts.show("編集中に添付できるのは画像だけです", error = true); scala.concurrent.Future.successful(None) }
   else Api.upload(props.m.channelId, f).map(Some(_))
 }
 
 def saveEdit(s: State, props: Props): Unit = s.editor.v.foreach { ed =>
-  if (!ed.isEmpty()) Store.report(Api.editMessage(props.m.id, Editor.fromJs(ed.getJSON()))) { n =>
+  if (!ed.isEmpty()) Toasts.report(Api.editMessage(props.m.id, Editor.fromJs(ed.getJSON()))) { n =>
     props.onEdit(None)
     props.onChanged(n)
   }
@@ -104,7 +104,7 @@ def saveEdit(s: State, props: Props): Unit = s.editor.v.foreach { ed =>
 def react(s: State, props: Props, emoji: String): Unit = {
   s.picker := false
   val on = !props.m.reactions.exists(r => r.emoji == emoji && r.users.exists(u => Store.myId.contains(u.id)))
-  Store.report(Api.react(props.m.id, emoji, on))(rs => props.onChanged(props.m.copy(reactions = rs)))
+  Toasts.report(Api.react(props.m.id, emoji, on))(rs => props.onChanged(props.m.copy(reactions = rs)))
 }
 
 def reacted(r: ReactionDto): Boolean = r.users.exists(u => Store.myId.contains(u.id))
@@ -127,7 +127,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
 <template>
   <div :id='"msg-" + props.m.id' :class="cls(props)">
     <template v-if="isSystem(props)">
-      <div class="sys"><span class="sys-time">{{ Fmt.time(props.m.createdAt) }}</span><span class="sys-text" v-html="props.m.html"></span></div>
+      <div class="sys"><span class="sys-time">{{ Fmt.time(props.m.createdAt) }}</span><span class="sys-text" v-html="props.m.html" v-rich="props.m.html"></span></div>
     </template>
     <template v-else>
       <div class="gutter">
@@ -135,7 +135,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
         <template v-else>
           <img v-if="iconImage(props).isDefined" :src='iconImage(props).getOrElse("")' alt="" class="emoji-img">
           <span v-else-if="iconChar(props).isDefined" class="emoji-icon">{{ iconChar(props).getOrElse("") }}</span>
-          <Avatar v-else :user="userOf(props)" :size="36" />
+          <Avatar v-else :user="userOf(props).map(person)" :size="36" />
         </template>
       </div>
       <div class="body">
@@ -150,7 +150,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
         <div v-if="props.m.deleted" class="muted deleted">（このメッセージは削除されました）</div>
         <template v-if="!props.m.deleted">
           <div v-if="!props.editing" class="rich">
-            <div v-html="props.m.html"></div>
+            <div v-html="props.m.html" v-rich="props.m.html"></div>
             <span v-if="edited(props)" class="muted small edited">（編集済み）</span>
           </div>
           <div v-if="props.editing" class="edit">
@@ -178,7 +178,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
               <template v-else>{{ r.emoji }}</template> {{ r.users.size }}</button>
           </div>
           <button v-if="props.m.replyCount > 0 && !props.inThread" class="replies" @click="props.onReply(props.m)">
-            <Avatar v-for="u in props.m.replyUsers.take(4)" :key="u.id" :user="Some(u)" :size="20" />
+            <Avatar v-for="u in props.m.replyUsers.take(4)" :key="u.id" :user="Some(person(u))" :size="20" />
             <span class="rc">{{ replyLabel(props) }}</span><span class="muted small">{{ lastReply(props) }}</span>
           </button>
         </template>
@@ -190,7 +190,7 @@ def userOf(props: Props): Option[UserBrief] = props.m.author.map(a => iconUrl(pr
         <button class="tool" :title='if (props.m.saved) "保存を外す" else "保存"' @click="save(s, props)"><span :class='if (props.m.saved) "ico ico-bookmark-fill saved" else "ico ico-bookmark"'></span></button>
         <button class="tool" title="その他" @click="openMenu(s, event)">⋯</button>
         <div v-if="s.picker" class="pick-wrap">
-          <EmojiPicker :down="!s.up.v" :right="true" :onPick="e => react(s, props, e)" :onClose="_ => s.picker := false" />
+          <EmojiPicker :categories="Reactions.categories" :down="!s.up.v" :right="true" :onPick="e => react(s, props, e)" :onClose="_ => s.picker := false" />
         </div>
         <div v-if="s.menu" :class="menuCls(s)" @mouseleave="s.menu := false">
           <button @click="s.menu := false; s.remind := true">⏰ リマインド</button>

@@ -38,7 +38,6 @@ case class State(channel: RV[Option[ChannelDto]] = RV(None),
                  atBottom: RV[Boolean] = RV(true),
                  scroller: ElementRef[dom.HTMLElement] = ElementRef(),
                  loadingOlder: RV[Boolean] = RV(false),
-                 onVisible: RV[Option[js.Function1[dom.Event, Unit]]] = RV(None),
                  readTimer: RV[Option[Int]] = RV(None))
 
 def initState() = State()
@@ -46,8 +45,7 @@ def initState() = State()
 def mounted(s: State, props: Props): Unit = {
   Store.view(Some(props.channelId))
   Prefs.set("last", props.channelId.toString)
-  val q = new dom.URL(dom.window.location.href).searchParams
-  val target = Option(q.get("m")).flatMap(v => scala.util.Try(UUID.fromString(v)).toOption)
+  val target = Router.queryParam("m").v.flatMap(v => scala.util.Try(UUID.fromString(v)).toOption)
   s.readUpTo := Store.channel(props.channelId).map(_.lastReadSeq).getOrElse(Long.MaxValue)
   s.thread := props.threadRoot
   if (props.threadRoot.isDefined) { s.pane := "thread"; s.threadHighlight := target }
@@ -64,14 +62,14 @@ def mounted(s: State, props: Props): Unit = {
   }
   Api.bookmarks(props.channelId).foreach(s.bookmarks := _)
   watch(Store.events, false)((_, ev) => onEvents(s, props, ev._2))
-  // タブに戻ったら既読にする
-  val f: js.Function1[dom.Event, Unit] = (_: dom.Event) => if (dom.document.visibilityState.toString == "visible") markRead(s, props)
-  dom.document.addEventListener("visibilitychange", f)
-  s.onVisible := Some(f)
+  // タブに戻ったら既読にする（画面を離れると自動で外れる）
+  useEventListener[dom.Event](dom.document, "visibilitychange") { _ =>
+    if (dom.document.visibilityState.toString == "visible") markRead(s, props)
+  }
+  ()
 }
 
 def unmounted(s: State, props: Props): Unit = {
-  s.onVisible.v.foreach(f => dom.document.removeEventListener("visibilitychange", f))
   s.readTimer.v.foreach(dom.window.clearTimeout)
   Store.view(None)
 }
@@ -211,24 +209,24 @@ def togglePane(s: State, props: Props, p: String): Unit =
 def loadPins(s: State, props: Props): Unit = Api.pins(props.channelId).foreach(s.pins := _)
 def loadMembers(s: State, props: Props): Unit = Api.members(props.channelId).foreach(s.members := _)
 
-def join(s: State, props: Props): Unit = Store.report(Api.join(props.channelId)) { c =>
+def join(s: State, props: Props): Unit = Toasts.report(Api.join(props.channelId)) { c =>
   s.channel := Some(c); Store.replace(c); Store.view(Some(props.channelId))
 }
 
 def favorite(s: State, props: Props): Unit = s.channel.v.foreach { c =>
-  Store.report(Api.prefs(props.channelId, MemberPrefReq(Some(!c.favorite), None, None, None))) { n => s.channel := Some(n); Store.replace(n) }
+  Toasts.report(Api.prefs(props.channelId, MemberPrefReq(Some(!c.favorite), None, None, None))) { n => s.channel := Some(n); Store.replace(n) }
 }
 
 def editLast(s: State): Unit =
   s.list.v.reverse.find(m => m.author.exists(a => Store.myId.contains(a.id)) && m.kind == "user" && !m.deleted).foreach(m => s.editing := Some(m.id))
 
 def saveBookmark(s: State, props: Props): Unit =
-  Store.report(Api.post[List[BookmarkDto]](s"/api/channels/${props.channelId}/bookmarks", BookmarkReq(s.bmTitle.v, s.bmUrl.v, None).asJson)) { bs =>
+  Toasts.report(Api.post[List[BookmarkDto]](s"/api/channels/${props.channelId}/bookmarks", BookmarkReq(s.bmTitle.v, s.bmUrl.v, None).asJson)) { bs =>
     s.bookmarks := bs; s.addBookmark := false; s.bmTitle := ""; s.bmUrl := ""
   }
 
 def removeBookmark(s: State, props: Props, b: BookmarkDto): Unit = Dialog.confirm(s"ブックマーク「${b.title}」を外しますか？", "外す") {
-  Store.report(Api.delete(s"/api/channels/${props.channelId}/bookmarks/${b.id}"))(_ => s.bookmarks := s.bookmarks.v.filterNot(_.id == b.id))
+  Toasts.report(Api.delete(s"/api/channels/${props.channelId}/bookmarks/${b.id}"))(_ => s.bookmarks := s.bookmarks.v.filterNot(_.id == b.id))
 }
 
 def openMember(u: UserBrief): Unit = if (!u.bot) Store.openDm(List(u.id))
@@ -303,7 +301,7 @@ def meetings = Store.config.mapC(_.exists(_.meetings))
       </header>
       <div v-if="showBookmarks(s)" class="bookmarks">
         <span v-for="b in s.bookmarks" :key="b.id" class="bm">
-          <a :href="b.url" target="_blank" rel="noopener">{{ if (b.emoji.nonEmpty) b.emoji else "🔗" }} {{ b.title }}</a>
+          <a :href="b.url" target="_blank" rel="noopener" v-rich="b.url">{{ if (b.emoji.nonEmpty) b.emoji else "🔗" }} {{ b.title }}</a>
           <button class="bm-x" title="外す" @click="removeBookmark(s, props, b)">×</button>
         </span>
         <form v-if="s.addBookmark" class="bm-form" @submit.prevent="saveBookmark(s, props)">
@@ -362,7 +360,7 @@ def meetings = Store.config.mapC(_.exists(_.meetings))
       <div class="pbody">
         <button v-if="memberNotDm(s)" class="small add-m" @click="s.settings := true">＋ メンバーを追加</button>
         <div v-for="m in s.members" :key="m.user.id" class="member" @click="openMember(m.user)">
-          <Avatar :user="Some(m.user)" :size="28" /><span class="grow">{{ m.user.name }}</span>
+          <Avatar :user="Some(person(m.user))" :size="28" /><span class="grow">{{ m.user.name }}</span>
           <span v-if="m.user.bot" class="muted small">APP</span>
           <span v-if='m.role == "admin"' class="muted small">管理者</span>
         </div>

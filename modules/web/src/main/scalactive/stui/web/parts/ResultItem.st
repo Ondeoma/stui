@@ -19,10 +19,10 @@ def html(props: Props): String = props.snippet.filter(_.nonEmpty).getOrElse(prop
   <div class="ri" @click="go(props)">
     <div class="where muted small">{{ where(props) }} <span v-if="props.extra.nonEmpty">・{{ props.extra }}</span></div>
     <div class="row top">
-      <Avatar :user="props.m.author" :size="32" />
+      <Avatar :user="props.m.author.map(person)" :size="32" />
       <div class="grow body">
         <div><b>{{ name(props) }}</b> <span class="muted small">{{ Fmt.dateTime(props.m.createdAt) }}</span></div>
-        <div class="rich" v-html="html(props)"></div>
+        <div class="rich" v-html="html(props)" v-rich="html(props)"></div>
         <div v-if="props.m.attachments.nonEmpty" class="muted small">📎 {{ props.m.attachments.map(_.fileName).mkString("、") }}</div>
       </div>
     </div>

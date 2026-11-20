@@ -14,7 +14,7 @@ def initState() = State()
 
 def mounted(s: State): Unit = {
   pageTitle("検索")
-  val q = Option(new dom.URL(dom.window.location.href).searchParams.get("q")).getOrElse("")
+  val q = Router.queryParam("q").v.getOrElse("")
   s.q := q
   if (q.trim.nonEmpty) run(s)
 }
@@ -50,7 +50,7 @@ def filters: List[(String, String)] = List("in:#" -> "チャンネル", "from:@"
 <template>
   <div class="page scroll-page">
     <form class="row bar" @submit.prevent="run(s)">
-      <input type="search" class="grow" v-model="s.q" placeholder="検索（例: 障害 in:#開発 from:@山田 after:-7d）" autofocus>
+      <input type="search" class="grow" v-model="s.q" placeholder="検索（例: 障害 in:#開発 from:@山田 after:-7d）" v-focus>
       <select v-model="s.order" @change="run(s)"><option value="">関連度順</option><option value="new">新しい順</option><option value="old">古い順</option></select>
       <button class="primary" type="submit">検索</button>
       <button class="ghost" type="button" @click="s.help := !s.help.v">？</button>
@@ -73,7 +73,7 @@ def filters: List[(String, String)] = List("in:#" -> "チャンネル", "from:@"
     <div v-if="users(s).mapC(_.nonEmpty)" class="section">
       <h3>人</h3>
       <div class="cards">
-        <button v-for="u in users(s)" :key="u.id" class="card-btn" @click="Store.openDm(List(u.id))"><Avatar :user="Some(u)" :size="20" /> {{ u.name }}</button>
+        <button v-for="u in users(s)" :key="u.id" class="card-btn" @click="Store.openDm(List(u.id))"><Avatar :user="Some(person(u))" :size="20" /> {{ u.name }}</button>
       </div>
     </div>
     <div v-if="files(s).mapC(_.nonEmpty)" class="section">

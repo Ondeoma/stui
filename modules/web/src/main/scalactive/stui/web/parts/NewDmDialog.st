@@ -21,9 +21,9 @@ def label(s: State) = s.users.mapC(us => if (us.isEmpty) "自分だけのメモ�
   <Modal :onClose="_ => close()">
     <form @submit.prevent="start(s)">
       <h2>ダイレクトメッセージ</h2>
-      <UserPicker :onPick="u => add(s, u)" :autofocus="true" />
+      <UserPicker placeholder="名前・メールで探す" :search="UserSearch.search" :delay="150" :onPick="p => UserSearch(p).foreach(add(s, _))" :autofocus="true" />
       <div class="chips">
-        <span v-for="u in s.users" :key="u.id" class="chip"><Avatar :user="Some(u)" :size="18" /> {{ u.name }}
+        <span v-for="u in s.users" :key="u.id" class="chip"><Avatar :user="Some(person(u))" :size="18" /> {{ u.name }}
           <button type="button" class="x" @click="s.users := s.users.v.filterNot(_.id == u.id)">×</button></span>
       </div>
       <p class="muted small">相手を選んでください（8人まで）。</p>

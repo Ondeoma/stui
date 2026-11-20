@@ -14,10 +14,10 @@ import scala.util.{Failure, Success}
 case class Props(channelId: UUID, rootId: Option[UUID] = None, placeholder: String = "", onSent: MessageDto => Unit = _ => (),
                  onEditLast: () => Unit = () => ())
 
-case class State(editor: RV[Option[EditorHandle]] = RV(None),
+case class State(act: ActionState,
+                 editor: RV[Option[EditorHandle]] = RV(None),
                  files: RV[List[AttachmentDto]] = RV(Nil),
                  uploading: RV[Int] = RV(0),
-                 busy: RV[Boolean] = RV(false),
                  also: RV[Boolean] = RV(false),
                  picker: RV[Boolean] = RV(false),
                  schedule: RV[Option[Json]] = RV(None),
@@ -26,7 +26,7 @@ case class State(editor: RV[Option[EditorHandle]] = RV(None),
                  last: RV[Option[Json]] = RV(None),
                  tb: RV[Boolean] = RV(Prefs.get("toolbar", if (dom.window.innerWidth < 760) "0" else "1") == "1"))
 
-def initState() = State()
+def initState() = State(useAction())
 
 def mounted(s: State, props: Props): Unit =
   // 下書きを読んでから入力欄を出す（読めなくても空の入力欄は出す）
@@ -52,7 +52,7 @@ def upload(s: State, props: Props)(f: dom.File): Future[Option[AttachmentDto]] =
   s.uploading := s.uploading.v + 1
   Api.upload(props.channelId, f).transform { r =>
     s.uploading := s.uploading.v - 1
-    r.failed.foreach(Store.error)
+    r.failed.foreach(Toasts.error)
     Success(r.toOption.flatMap { a =>
       if (inlineImage(a)) Some(a)
       else { s.files := s.files.v :+ a; None }
@@ -66,22 +66,16 @@ def inlineImage(a: AttachmentDto): Boolean = a.contentType.startsWith("image/") 
 def removeFile(s: State, id: UUID): Unit = s.files := s.files.v.filterNot(_.id == id)
 
 def send(s: State, props: Props): Unit = s.editor.v.foreach { ed =>
-  if ((!ed.isEmpty() || s.files.v.nonEmpty) && !s.busy.v && s.uploading.v == 0) {
-    s.busy := true
+  if ((!ed.isEmpty() || s.files.v.nonEmpty) && !s.act.busy.v && s.uploading.v == 0) {
     s.pending.v.foreach(dom.window.clearTimeout)
     s.pending := None
     val body = Editor.fromJs(ed.getJSON())
-    Api.postMessage(props.channelId, PostMessageReq(body, props.rootId, Option.when(s.also.v)(true), Option.when(s.files.v.nonEmpty)(s.files.v.map(_.id))))
-      .onComplete {
-        case Success(m) =>
-          s.busy := false
-          reset(s)
-          props.onSent(m)
-          Store.changed()
-        case Failure(e) =>
-          s.busy := false
-          Store.error(e)
-      }
+    Toasts.report(s.act.run(Api.postMessage(props.channelId,
+      PostMessageReq(body, props.rootId, Option.when(s.also.v)(true), Option.when(s.files.v.nonEmpty)(s.files.v.map(_.id)))))) { m =>
+      reset(s)
+      props.onSent(m)
+      Store.changed()
+    }
   }
 }
 
@@ -95,11 +89,11 @@ def meeting(s: State, props: Props): Unit =
       Dialog.confirm(msg + "\n連携の画面を開きますか？", "連携する", danger = false) {
         dom.window.location.href = "/api/integrations/skaka/connect?returnTo=" + Api.enc(dom.window.location.pathname)
       }
-    case Failure(e) => Store.error(e)
+    case Failure(e) => Toasts.error(e)
   }
 
 def openSchedule(s: State): Unit = s.editor.v.foreach { ed =>
-  if (ed.isEmpty()) Store.toast("先にメッセージを入力してください", error = true)
+  if (ed.isEmpty()) Toasts.show("先にメッセージを入力してください", error = true)
   else s.schedule := Some(Editor.fromJs(ed.getJSON()))
 }
 
@@ -125,7 +119,7 @@ def showFiles(s: State) = computed { s.files.v.nonEmpty || s.uploading.v > 0 }
 def toggleTb(s: State): Unit = { s.tb := !s.tb.v; Prefs.set("toolbar", if (s.tb.v) "1" else "0") }
 def boxClass(s: State) = s.tb.mapC(t => if (t) "box" else "box no-tb")
 def isThread(props: Props): Boolean = props.rootId.isDefined
-def sendClass(s: State) = s.busy.mapC(b => if (b) "primary send busy" else "primary send")
+def sendClass(s: State) = s.act.busy.mapC(b => if (b) "primary send busy" else "primary send")
 def channelLabel(props: Props): String = Store.channel(props.channelId).map(c => if (ChannelKind.isDm(c.kind)) "DM" else "#" + c.name).getOrElse("チャンネル")
 </script>
 
@@ -145,7 +139,7 @@ def channelLabel(props: Props): String = Store.channel(props.channelId).map(c =>
         <button class="ghost tb" title="ファイル・画像を添付（貼り付け・ドロップでも。画像は本文に埋め込みます）" @click="s.editor.v.foreach(_.pickFile())"><span class="ico ico-paperclip"></span></button>
         <span class="pick-wrap">
           <button class="ghost tb" title="絵文字" @click="s.picker := !s.picker.v">😀</button>
-          <EmojiPicker v-if="s.picker" :onPick="e => emoji(s, e)" :onClose="_ => s.picker := false" />
+          <EmojiPicker :categories="Reactions.categories" v-if="s.picker" :onPick="e => emoji(s, e)" :onClose="_ => s.picker := false" />
         </span>
         <button class="ghost tb" title="メンション" @click='s.editor.v.foreach(_.insertText("@"))'>＠</button>
         <button v-if="meetings" class="ghost tb" :title='"Web 会議を始める（" + AppNames.nameOf("skaka") + "）"' @click="meeting(s, props)"><span class="ico ico-video"></span></button>
@@ -153,7 +147,7 @@ def channelLabel(props: Props): String = Store.channel(props.channelId).map(c =>
         <span class="grow"></span>
         <span v-if="!isThread(props)" class="hint">Enter で送信・Shift+Enter で改行</span>
         <button class="ghost tb" title="送信を予約（定期メッセージ）" @click="openSchedule(s)">⏱</button>
-        <button :class="sendClass(s)" title="送信" :disabled="s.busy" @click="send(s, props)">➤</button>
+        <button :class="sendClass(s)" title="送信" :disabled="s.act.busy" @click="send(s, props)">➤</button>
       </div>
     </div>
     <ScheduleDialog v-for="b in s.schedule.mapC(_.toList)" :channelId="props.channelId" :rootId="props.rootId" :body="Some(b)"
