@@ -236,6 +236,10 @@ object RichText {
   private def tpe(n: Json): String = n.hcursor.get[String]("type").getOrElse("")
   private def attr(n: Json, k: String): ACursor = n.hcursor.downField("attrs").downField(k)
 
+  /** 記法の記号を `\` でエスケープする（連携サービスの見出しなど、利用者が書いたのではない文字を Markdown に埋め込むとき）。 */
+  def escapeMarkdown(s: String): String =
+    s.flatMap(c => if "\\`*_~[]()<>|#".contains(c) then s"\\$c" else c.toString)
+
   /** リンクに使える URL（http(s)・mailto・相対パス）。 */
   def safeUrl(u: String): Option[String] = {
     val t = u.trim

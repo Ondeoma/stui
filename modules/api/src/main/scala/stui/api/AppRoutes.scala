@@ -39,7 +39,8 @@ final class AppRoutes(channels: ChannelStore,
             val url = str(j, "url").filter(u => RichText.safeUrl(u).isDefined)
             val text = str(j, "text").getOrElse("")
             val md = List(
-              title.map(t => url.fold(s"**$t**")(u => s"**[$t]($u)**")),
+              // 見出しは文字として出す（[ ] などの記号でリンクや太字が崩れないように）
+              title.map(RichText.escapeMarkdown).map(t => url.fold(s"**$t**")(u => s"**[$t]($u)**")),
               Option(text).filter(_.nonEmpty),
               if title.isEmpty then url else None
             ).flatten.mkString("\n\n")

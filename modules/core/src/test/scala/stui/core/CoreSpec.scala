@@ -136,6 +136,14 @@ class CoreSpec extends munit.FunSuite {
     assertEquals(RichText.toPlain(RichText.fromMarkdown("- \\[ \\] 名前\\_1")), "[ ] 名前_1")
   }
 
+  test("RichText: escapeMarkdown した見出しは、リンクの中でも記号を文字のまま出す") {
+    val t = RichText.escapeMarkdown("🔴 [発生] a*b_c (1) <x> #1 \\")
+    assertEquals(
+      RichText.toHtml(RichText.fromMarkdown(s"**[$t](https://e.example/a)**")),
+      """<p><strong><a href="https://e.example/a" target="_blank" rel="noopener noreferrer nofollow">🔴 [発生] a*b_c (1) &lt;x&gt; #1 \</a></strong></p>"""
+    )
+  }
+
   test("HookIcons: icon_emoji の :name: を絵文字にし、描けないものは描かない") {
     assertEquals(HookIcons.normalize(":large_green_circle:"), "🟢")
     assertEquals(HookIcons.normalize(":red_circle:"), "🔴")
