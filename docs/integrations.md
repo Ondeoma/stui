@@ -2,11 +2,11 @@
 
 stui は兄弟のサービス（[skea](https://github.com/Ondeoma/skea)（タスク管理）・[skiwi](https://github.com/Ondeoma/skiwi)（Wiki）・
 [skawau](https://github.com/Ondeoma/skawau)（ファイル共有）・[skuaka](https://github.com/Ondeoma/skuaka)（カレンダー）・
-[skaka](https://github.com/Ondeoma/skaka)（Web 会議））と、OAuth 2.0（認可コード + PKCE）でつながります。向きは2つあります。
+[skaka](https://github.com/Ondeoma/skaka)（Web 会議）・[skereru](https://github.com/Ondeoma/skereru)（メール））と、OAuth 2.0（認可コード + PKCE）でつながります。向きは2つあります。
 
 | 向き | 使いみち | stui の役割 |
 |---|---|---|
-| 兄弟 → stui | 各種の通知（タスクの担当・Wiki の更新・予定のリマインドなど）を stui の DM やチャンネルに送る。stui のメッセージのリンクに概要を出す | 認可サーバー（`/oauth/*`） |
+| 兄弟 → stui | 各種の通知（タスクの担当・Wiki の更新・予定のリマインド・メールの受信など）を stui の DM やチャンネルに送る。stui のメッセージのリンクに概要を出す | 認可サーバー（`/oauth/*`） |
 | stui → 兄弟 | メッセージに貼った skiwi のページ・skawau のファイル・skea のタスク・skorimako のトレースやアラートの URL に名前を出す。skaka に会議室をすぐ作る | クライアント（`/api/integrations/{サービス}/*`） |
 
 どちらも、トークンは「そのユーザー自身の権限」で発行されます。見られないものは見えません。
