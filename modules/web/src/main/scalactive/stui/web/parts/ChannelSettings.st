@@ -3,7 +3,6 @@ import stui.web.*
 import io.circe.syntax.*
 import stui.shared.*
 
-import java.util.UUID
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 
 // チャンネルの設定: 概要（名前・トピック・説明・アーカイブ）・通知・メンバー・連携（Webhook・定期メッセージ）
