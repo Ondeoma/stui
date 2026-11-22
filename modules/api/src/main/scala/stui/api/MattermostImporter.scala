@@ -192,7 +192,7 @@ final class MattermostImporter(src: MattermostSource,
       ns <- count.get
       (n, s) = ns
       _ <- store.setLastRead(seen)
-      _ <- log(s"投稿: 新しく $n・取り込み済み・取り込まないもの $s")
+      _ <- log(s"投稿: 新しく ${n}・取り込み済み・取り込まないもの $s")
     } yield MattermostImportReport(posts = n, skipped = s)
 
   /** 取り込む投稿を stui のメッセージにする（取り込み済み・チャンネルを取り込まないもの・システムの投稿は None）。 */

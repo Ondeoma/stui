@@ -54,7 +54,7 @@ stui は、チームのためのコミュニケーションツールです（Mat
 
 ## 開発
 
-必要なもの: JDK 21、sbt、Node.js、Docker。
+必要なもの: JDK 25、sbt、Node.js、Docker。
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d --wait   # PostgreSQL+PGroonga (:54379)、ScalaS3 (:3920)、Mailpit (SMTP :1027、画面 :8027)

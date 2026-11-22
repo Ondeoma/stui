@@ -1,7 +1,7 @@
 # 開発・試験用の S3 互換ストレージ（ScalaS3、https://github.com/Ondeoma/ScalaS3）。
 # 公開イメージがないため、決まったコミットのソースからビルドする（初回は数分かかる）。
 # 版を上げるときは SCALAS3_REF を変える。
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:25-jdk AS build
 ARG SBT_VERSION=1.12.6
 ARG SCALAS3_REF=913fea8629fde58f987efda25b177b28234f7aed
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
@@ -10,7 +10,7 @@ RUN git clone https://github.com/Ondeoma/ScalaS3.git /src && git -C /src checkou
 WORKDIR /src
 RUN /opt/sbt/bin/sbt -batch server/assembly
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 # ボリュームの所有者を scalas3 にするため、データのディレクトリを先に作っておく
 RUN useradd --system --home /var/lib/scalas3 --create-home scalas3 \
  && mkdir -p /var/lib/scalas3/data && chown scalas3:scalas3 /var/lib/scalas3/data

@@ -118,7 +118,7 @@ final class McpRoutes(api: HttpRoutes[IO], sessions: SessionAuth, publicUrl: Str
             val unread = cc.get[Int]("unread").getOrElse(0)
             val mention = cc.get[Int]("mentions").getOrElse(0)
             val member = if cc.get[Boolean]("member").contains(true) then "" else "（未参加）"
-            s"- $name$member 未読 $unread・メンション $mention ${s(c, "topic")} id=${s(c, "id")}"
+            s"- $name$member 未読 ${unread}・メンション $mention ${s(c, "topic")} id=${s(c, "id")}"
           }.mkString("\n")
         ))
     },

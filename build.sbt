@@ -146,3 +146,10 @@ lazy val app = (project in file("modules/app"))
 lazy val root = (project in file("."))
   .aggregate(shared.jvm, shared.js, web, core, db, auth, api, app)
   .settings(name := "stui", publish / skip := true)
+
+// JDK 25 以上でビルドする（本番も JDK 25 で動かす）
+Global / onLoad := (Global / onLoad).value.andThen { s =>
+  val v = java.lang.Runtime.version.feature
+  if (v < 25) sys.error(s"JDK 25 以上が必要です（いまは JDK $v）")
+  s
+}
