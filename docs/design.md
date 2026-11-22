@@ -22,7 +22,7 @@ stui はチームのためのコミュニケーションツールです（チャ
 | 連携 | 兄弟のサービスと OAuth: 通知を受ける・リンクの名前を出す・skaka の会議室を作る（[integrations.md](integrations.md)） |
 | AI | MCP（Model Context Protocol）。ユーザーが画面でできることはすべて API・MCP からもできる |
 | 基盤 | PostgreSQL（Patroni で冗長化）、S3 互換ストレージ、アプリは複数ノードで動かせるステートレス構成 |
-| 実装 | Scala 3.3 LTS、Cats Effect 3、http4s 1.0（マイルストーン版）、doobie、Flyway。画面は Scalactive（Scala.js）。リッチテキストは Tiptap |
+| 実装 | Scala 3.9 LTS、Cats Effect 3、http4s 1.0（マイルストーン版）、doobie、Flyway。画面は Scalactive（Scala.js）。リッチテキストは Tiptap |
 | その他 | レスポンシブ対応、ダークモード、MIT ライセンス |
 
 ## 2. 全体アーキテクチャ

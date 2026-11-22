@@ -12,7 +12,7 @@ IFS=':' read -ra ENTRIES <<< "$CP"
 for e in "${ENTRIES[@]}"; do
   if [ -f "$e" ]; then out="dist/lib/$(basename "$e")"
   elif [ -d "$e" ]; then
-    # モジュールのクラスディレクトリを jar にまとめる（例: modules/db/target/scala-3.3.7/classes → <名前>-db.jar,
+    # モジュールのクラスディレクトリを jar にまとめる（例: modules/db/target/scala-3.9.0/classes → <名前>-db.jar,
     # modules/shared/jvm/target/...・modules/shared/.jvm/target/... → <名前>-shared.jar）.
     # このリポジトリの外のもの（ソースで参照している sbirds-lib）は sbirds-<モジュール>.jar にする
     # （同じ名前のモジュール〈shared・db など〉がアプリの jar を上書きしないように）

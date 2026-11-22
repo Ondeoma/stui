@@ -10,7 +10,6 @@ import stui.db.*
 import stui.shared.*
 
 import java.time.{Instant, LocalDate}
-import java.util.UUID
 import scala.concurrent.duration.*
 
 /** リマインダー・定期メッセージの送信（全ノードで動かし、SKIP LOCKED で取り合う）。 */

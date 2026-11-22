@@ -2,7 +2,6 @@ package stui.api
 
 import cats.effect.*
 import cats.syntax.all.*
-import fs2.Stream
 import fs2.io.file.Path as FPath
 import io.circe.Json
 import io.circe.parser.parse

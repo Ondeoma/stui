@@ -50,7 +50,7 @@ stui は、チームのためのコミュニケーションツールです（Mat
 | `frontend/` | Vite。Scala.js の出力と Tiptap（エディタ）をまとめてビルドする |
 | `deploy/` | Docker（試験用の3ノード構成）と VM 構築用の設定のひな形 |
 
-技術: Scala 3.3 LTS、Cats Effect 3、http4s 1.0（マイルストーン版）、doobie、Flyway、PostgreSQL 17 + PGroonga、Scala.js + Scalactive、Tiptap。
+技術: Scala 3.9 LTS、Cats Effect 3、http4s 1.0（マイルストーン版）、doobie、Flyway、PostgreSQL 17 + PGroonga、Scala.js + Scalactive、Tiptap。
 
 ## 開発
 
