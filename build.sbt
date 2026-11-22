@@ -1,10 +1,4 @@
 ThisBuild / scalaVersion := "3.9.0"
-// scalactive 0.7 が .st から作るコードは、Scala 3.9 で警告が出る（先頭の import の `X as _` と、implicit の渡し方）。
-// scalactive を直すまで、生成したファイルのこの 2 種類だけを黙らせる
-ThisBuild / scalacOptions ++= Seq(
-  "-Wconf:src=.*/src_managed/main/scalactive/.*&msg=unused import:s",
-  "-Wconf:src=.*/src_managed/main/scalactive/.*&msg=Implicit parameters should be provided with a `using` clause:s"
-)
 ThisBuild / organization := "io.github.ondeoma"
 ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / licenses := List("MIT" -> url("https://opensource.org/licenses/MIT"))
@@ -26,7 +20,7 @@ val otelInstV = "2.33.1-alpha"
 lazy val sbirdsLib = sys.env
   .get("SBIRDS_LIB")
   .map(p => file(p).getCanonicalFile.toURI)
-  .getOrElse(uri("https://github.com/Ondeoma/sbirds-lib.git#v0.5.0"))
+  .getOrElse(uri("https://github.com/Ondeoma/sbirds-lib.git#v0.5.1"))
 lazy val libSharedJVM = ProjectRef(sbirdsLib, "sharedJVM")
 lazy val libSharedJS = ProjectRef(sbirdsLib, "sharedJS")
 lazy val libObserve = ProjectRef(sbirdsLib, "observe")
@@ -71,7 +65,7 @@ lazy val web = (project in file("modules/web"))
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)),
     scalaJSUseMainModuleInitializer := true,
     libraryDependencies ++= Seq(
-      "io.github.ondeoma" %%% "scalactive" % "0.7.0"
+      "io.github.ondeoma" %%% "scalactive" % "0.7.2"
     )
   )
 
