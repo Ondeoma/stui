@@ -22,9 +22,18 @@ enum FeedItem {
     userId: Option[UUID])
   case Notified(
     userId: UUID)
+
+  /** ボイスチャンネルの取り決め（data は VoiceSignalDto の JSON）。 */
+  case Signal(
+    userId: UUID,
+    data: String)
 }
 
-final class StreamRoutes(feed: EventFeed, channels: ChannelStore, val sessions: SessionAuth, val access: Access2)
+final class StreamRoutes(feed: EventFeed,
+                         channels: ChannelStore,
+                         voice: VoiceStore,
+                         val sessions: SessionAuth,
+                         val access: Access2)
   extends RouteSupport {
 
   val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
@@ -32,6 +41,7 @@ final class StreamRoutes(feed: EventFeed, channels: ChannelStore, val sessions: 
     /**
      * 画面への知らせ。参加しているチャンネル（と watch で指定した見ている公開チャンネル）に変更があれば change、
      * 自分への通知があれば notify を送る。届いたら画面が /api/changes で中身を取りに行く。
+     * ボイスチャンネルの取り決めは voice-signal で中身ごと送る（つなぎ直しても取りこぼさないよう、最初に最近15秒の分も送る。画面は番号で重複を除く）。
      */
     case req @ GET -> Root / "api" / "stream" => getStream(req)
   }
@@ -58,13 +68,16 @@ final class StreamRoutes(feed: EventFeed, channels: ChannelStore, val sessions: 
                       )
                     )
                   case FeedItem.Notified(u) => IO.pure(Option.when(u == s.user.id)(sse("notify", Json.obj())))
+                  case FeedItem.Signal(u, data) => IO.pure(Option.when(u == s.user.id)(signal(data)))
                 }
+                val recent = Stream.evalSeq(voice.recentSignals(15, Some(s.user.id)).handleError(_ => Nil))
+                  .map(r => signal(VoiceSignals.json(r)))
                 // 接続が切られないよう 20 秒ごとに空の行を送る
                 val ping = Stream.awakeEvery[IO](20.seconds).as(ServerSentEvent(comment = Some("ping")))
                 // ログアウト・ユーザーの無効化・キーの失効の後は流し続けない（1分ごとに確かめて切る）
                 val revoked = Stream.awakeEvery[IO](60.seconds).evalMap(_ => sessions.fromRequest(req).map(_.isEmpty))
                 val body =
-                  (Stream.emit(ServerSentEvent(retry = Some(5.seconds), comment = Some("hello"))) ++
+                  (Stream.emit(ServerSentEvent(retry = Some(5.seconds), comment = Some("hello"))) ++ recent ++
                     events.merge(ping)).interruptWhen(revoked)
                 Ok(body.through(s =>
                   Stream.bracket(sbirds.observe.Metrics.upDown("stui.sse.connections", 1))(_ =>
@@ -76,6 +89,9 @@ final class StreamRoutes(feed: EventFeed, channels: ChannelStore, val sessions: 
           }
       }
     }
+
+  private def signal(data: String): ServerSentEvent =
+    ServerSentEvent(data = Some(data), eventType = Some("voice-signal"))
 
   private def sse(kind: String, data: Json): ServerSentEvent =
     ServerSentEvent(data = Some(data.noSpaces), eventType = Some(kind))

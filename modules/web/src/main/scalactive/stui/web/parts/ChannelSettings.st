@@ -61,6 +61,11 @@ def autoJoin(props: Props, on: Boolean): Unit =
     Store.replace(n); props.onChanged(n); Toasts.show(if (on) "全員を参加させ、新しい人も自動で参加するようにしました" else "自動参加をやめました")
   }
 
+def voice(props: Props, on: Boolean): Unit =
+  Toasts.report(Api.updateChannel(props.channel.id, UpdateChannelReq(None, None, None, None, None, Some(on)))) { n =>
+    Store.replace(n); props.onChanged(n); Toasts.show(if (on) "ボイスチャンネルにしました" else "ボイスチャンネルをやめました")
+  }
+
 def remove(props: Props): Unit =
   Dialog.confirm(s"#${props.channel.name} を削除しますか？ メッセージもすべて消え、元に戻せません。", "削除する") {
     Toasts.report(Api.delete(s"/api/channels/${props.channel.id}")) { _ => props.onClose(()); Store.loadChannels(); Router.go("/") }
@@ -156,6 +161,8 @@ def baseUrl: String = org.scalajs.dom.window.location.origin
         <button v-if="canManage(props) && props.channel.archived" @click="archive(props, false)">アーカイブを戻す</button>
         <button v-if="isAdmin && !props.channel.autoJoin" @click="autoJoin(props, true)">全員を自動で参加させる</button>
         <button v-if="isAdmin && props.channel.autoJoin" @click="autoJoin(props, false)">自動参加をやめる</button>
+        <button v-if="canManage(props) && !isDm(props) && !props.channel.voice" @click="voice(props, true)">🔊 ボイスチャンネルにする</button>
+        <button v-if="canManage(props) && !isDm(props) && props.channel.voice" @click="voice(props, false)">ボイスチャンネルをやめる</button>
         <button v-if="props.channel.member" @click="leave(props)">退出する</button>
         <button v-if="isAdmin" class="danger" @click="remove(props)">チャンネルを削除</button>
       </div>

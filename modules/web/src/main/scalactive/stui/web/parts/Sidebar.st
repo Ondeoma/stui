@@ -3,17 +3,19 @@ import stui.web.*
 import stui.shared.*
 
 
-// 左のサイドバー: スレッド・アクティビティ・保存・下書き、お気に入り、チャンネル、DM
+// 左のサイドバー: スレッド・アクティビティ・保存・下書き、お気に入り、チャンネル、ボイスチャンネル（いる人つき）、DM. 下はつながっているボイス
 case class State(showChannels: RV[Boolean] = RV(Prefs.get("side.channels", "1") == "1"),
                  showDms: RV[Boolean] = RV(Prefs.get("side.dms", "1") == "1"),
-                 showFav: RV[Boolean] = RV(Prefs.get("side.fav", "1") == "1"))
+                 showFav: RV[Boolean] = RV(Prefs.get("side.fav", "1") == "1"),
+                 showVoice: RV[Boolean] = RV(Prefs.get("side.voice", "1") == "1"))
 
 def initState() = State()
 
 def toggle(r: RV[Boolean], key: String): Unit = { r := !r.v; Prefs.set(key, if (r.v) "1" else "0") }
 
 def favorites = Store.channels.mapC(_.filter(_.favorite).sortBy(c => Store.title(c).toLowerCase))
-def chans = Store.channels.mapC(_.filter(c => !c.favorite && !ChannelKind.isDm(c.kind)).sortBy(_.name.toLowerCase))
+def chans = Store.channels.mapC(_.filter(c => !c.favorite && !c.voice && !ChannelKind.isDm(c.kind)).sortBy(_.name.toLowerCase))
+def voices = Store.channels.mapC(_.filter(c => !c.favorite && c.voice).sortBy(_.name.toLowerCase))
 def dms = Store.channels.mapC(_.filter(c => !c.favorite && ChannelKind.isDm(c.kind))
   .sortBy(c => -c.lastMessageAt.map(_.toEpochMilli).getOrElse(c.createdAt.toEpochMilli)).take(40))
 
@@ -22,12 +24,15 @@ def cls(c: ChannelDto) = Router.href.mapC { h =>
   List("item", if (active) "active" else "", if (c.unread > 0 && !c.muted) "unread" else "", if (c.muted) "muted" else "").filter(_.nonEmpty).mkString(" ")
 }
 def navCls(path: String) = Router.href.mapC(h => if (new org.scalajs.dom.URL(h).pathname == path) "item active" else "item")
-def icon(c: ChannelDto): String = ChannelKind.icon(c.kind)
+def icon(c: ChannelDto): String = Store.icon(c)
 def isDm(c: ChannelDto): Boolean = c.kind == ChannelKind.Dm
 def threads = Store.threadsUnread.mapC(n => if (n > 0) n.toString else "")
 def saved = Store.savedCount.mapC(n => if (n > 0) n.toString else "")
 def mentionsOf(c: ChannelDto): String = if (c.mentions > 99) "99+" else c.mentions.toString
 def go(c: ChannelDto): Unit = Store.openChannel(c.id)
+
+/** ボイスチャンネル: 入って開く（入っていれば開くだけ）. */
+def goVoice(c: ChannelDto): Unit = { if (!c.archived) Voice.join(c.id); Store.openChannel(c.id) }
 def nav(path: String): Unit = { Store.sideOpen := false; Router.go(path) }
 def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
 </script>
@@ -49,12 +54,15 @@ def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
     <template v-if="favorites.mapC(_.nonEmpty)">
       <div class="sec"><button class="sec-btn" @click='toggle(s.showFav, "side.fav")'>{{ caret(s.showFav) }} お気に入り</button></div>
       <template v-if="s.showFav">
-        <a v-for="c in favorites" :key="c.id" :href='"/c/" + c.id' :class="cls(c)" @click.prevent="go(c)">
+        <template v-for="c in favorites" :key="c.id">
+        <a :href='"/c/" + c.id' :class="cls(c)" @click.prevent="go(c)">
           <span v-if="isDm(c)" class="ic"><Avatar :user="c.dmUsers.headOption.map(person)" :size="18" /></span>
           <span v-else class="ic">{{ icon(c) }}</span>
           <span class="name">{{ Store.title(c) }}</span>
           <span v-if="c.mentions > 0" class="badge">{{ mentionsOf(c) }}</span>
         </a>
+        <VoiceMembers v-if="c.voice" :channelId="c.id" />
+        </template>
       </template>
     </template>
 
@@ -66,6 +74,19 @@ def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
         <span v-if="c.mentions > 0" class="badge">{{ mentionsOf(c) }}</span>
       </a>
       <a href="/browse" class="item sub" @click.prevent='nav("/browse")'><span class="ic">🔍</span><span class="name">チャンネルを探す</span></a>
+    </template>
+
+    <div class="sec"><button class="sec-btn" @click='toggle(s.showVoice, "side.voice")'>{{ caret(s.showVoice) }} ボイスチャンネル</button>
+      <button class="add" title="ボイスチャンネルを作る" @click='Store.dialog := "voice"'>＋</button></div>
+    <template v-if="s.showVoice">
+      <template v-for="c in voices" :key="c.id">
+        <a :href='"/c/" + c.id' :class="cls(c)" title="入る" @click.prevent="goVoice(c)">
+          <span class="ic">🔊</span><span class="name">{{ c.name }}</span>
+          <span v-if="c.mentions > 0" class="badge">{{ mentionsOf(c) }}</span>
+        </a>
+        <VoiceMembers :channelId="c.id" />
+      </template>
+      <a v-if="voices.mapC(_.isEmpty)" href="#" class="item sub" @click.prevent='Store.dialog := "voice"'><span class="ic">＋</span><span class="name">ボイスチャンネルを作る</span></a>
     </template>
 
     <div class="sec"><button class="sec-btn" @click='toggle(s.showDms, "side.dms")'>{{ caret(s.showDms) }} ダイレクトメッセージ</button>
@@ -80,6 +101,7 @@ def caret(r: RV[Boolean]) = r.mapC(o => if (o) "▾" else "▸")
       </a>
     </template>
   </nav>
+  <VoiceBar />
 </template>
 
 <style scoped>

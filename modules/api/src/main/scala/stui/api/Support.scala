@@ -24,7 +24,8 @@ final case class ApiConfig(adminGroups: Set[String],
                            version: String = "0.1.0",
                            oauthClients: List[OAuthClient] = Nil,
                            linkServices: List[LinkService] = Nil,
-                           rateLimit: sbirds.http.RateLimitConfig = sbirds.http.RateLimitConfig()) {
+                           rateLimit: sbirds.http.RateLimitConfig = sbirds.http.RateLimitConfig(),
+                           ice: sbirds.http.IceConfig = sbirds.http.IceConfig()) {
   def service(provider: String): Option[LinkService] = linkServices.find(_.provider == provider)
 }
 

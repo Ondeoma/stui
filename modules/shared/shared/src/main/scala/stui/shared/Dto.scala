@@ -90,6 +90,9 @@ object EventKind {
   val MemberLeft = "member.left"
   val BookmarkChanged = "bookmark.changed"
 
+  /** ボイスチャンネルの顔ぶれ・状態（ミュート・画面共有）の変化（画面の同期だけ. Webhook には送らない）. */
+  val VoiceChanged = "voice.changed"
+
   /** 送信の Webhook で選べるイベント. */
   val webhook: List[String] =
     List(MessageCreated, MessageUpdated, MessageDeleted, ReactionChanged, ChannelCreated, MemberJoined, MemberLeft)
@@ -208,26 +211,61 @@ final case class ChannelDto(id: UUID,
                             unread: Int,
                             mentions: Int,
                             lastReadSeq: Long,
-                            dmUsers: List[UserBrief]) derives Encoder.AsObject, Decoder
+                            dmUsers: List[UserBrief],
+                            voice: Boolean = false) derives Encoder.AsObject, Decoder
 
 final case class CreateChannelReq(name: String,
                                   kind: String,
                                   topic: Option[String],
                                   purpose: Option[String],
-                                  memberIds: List[UUID])
+                                  memberIds: List[UUID],
+                                  voice: Option[Boolean] = None)
   derives Encoder.AsObject, Decoder
 
 final case class UpdateChannelReq(name: Option[String],
                                   topic: Option[String],
                                   purpose: Option[String],
                                   archived: Option[Boolean],
-                                  autoJoin: Option[Boolean]) derives Encoder.AsObject, Decoder
+                                  autoJoin: Option[Boolean],
+                                  voice: Option[Boolean] = None) derives Encoder.AsObject, Decoder
 
 final case class MemberPrefReq(favorite: Option[Boolean],
                                muted: Option[Boolean],
                                notifyLevel: Option[String],
                                hidden: Option[Boolean])
   derives Encoder.AsObject, Decoder
+
+// ------------------------------------------------------------------ ボイスチャンネル
+
+/** ボイスチャンネルにいる人（画面のタブごとの接続）. deafened はスピーカーをオフ、sharing は画面共有中. */
+final case class VoiceMemberDto(connId: UUID,
+                                user: UserBrief,
+                                muted: Boolean,
+                                deafened: Boolean,
+                                sharing: Boolean,
+                                joinedAt: Timestamp) derives Encoder.AsObject, Decoder
+
+/** ボイスチャンネルと、いま入っている人（入った順）. */
+final case class VoiceRoomDto(channelId: UUID, members: List[VoiceMemberDto]) derives Encoder.AsObject, Decoder
+
+final case class VoiceJoinReq(channelId: UUID, muted: Option[Boolean] = None, deafened: Option[Boolean] = None)
+  derives Encoder.AsObject, Decoder
+
+/** 入った. connId はこの画面の接続（状態・取り決めの送受信で使う）、iceServers は RTCPeerConnection に渡す STUN・TURN. */
+final case class VoiceJoinDto(connId: UUID, iceServers: List[sbirds.shared.IceServer], room: VoiceRoomDto)
+  derives Encoder.AsObject, Decoder
+
+/** 画面の状態（15秒ごとにも送る. 届かなくなると外れる）. */
+final case class VoiceStateReq(connId: UUID, muted: Boolean, deafened: Boolean, sharing: Boolean)
+  derives Encoder.AsObject, Decoder
+
+final case class VoiceLeaveReq(connId: UUID) derives Encoder.AsObject, Decoder
+
+/** 同じボイスチャンネルの相手（to は相手の connId）への、WebRTC の取り決め（SDP・ICE の候補）. */
+final case class VoiceSignalReq(connId: UUID, to: UUID, data: Json) derives Encoder.AsObject, Decoder
+
+/** 届いた取り決め（SSE の voice-signal）. id は重複を見分けるための番号. */
+final case class VoiceSignalDto(id: Long, to: UUID, from: UUID, data: Json) derives Encoder.AsObject, Decoder
 
 final case class ChannelMemberDto(user: UserBrief, role: String, joinedAt: Timestamp) derives Encoder.AsObject, Decoder
 

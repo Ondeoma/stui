@@ -59,6 +59,8 @@ object Config {
       clients <- sbirds.oauth.OAuthClient.fromEnv()
       // RATE_LIMIT_AUTH・RATE_LIMIT_PUBLIC（IP ごとの1分あたりの回数. 0 で制限しない）・TRUSTED_PROXIES
       rate <- sbirds.http.RateLimitConfig.fromEnv()
+      // ボイスチャンネルの WebRTC（ICE_SERVERS・TURN_URLS・TURN_SECRET・TURN_TTL_HOURS）
+      ice <- sbirds.http.IceConfig.fromEnv()
       tz <- opt("TIMEZONE").getOrElse("Asia/Tokyo") match {
         case z if scala.util.Try(java.time.ZoneId.of(z)).isSuccess => Right(z)
         case z => Left(s"TIMEZONE が正しくありません: $z（例: Asia/Tokyo）")
@@ -80,6 +82,7 @@ object Config {
           webhookAllowPrivate = enabled("WEBHOOK_ALLOW_PRIVATE"),
           oauthClients = clients,
           rateLimit = rate,
+          ice = ice,
           // SKIWI_URL・SKIWI_CLIENT_ID・SKIWI_CLIENT_SECRET（SKAWAU_*・SKEA_*・SKAKA_* も同じ。*_INTERNAL_URL はサーバーから呼ぶ URL）
           linkServices = stui.api.LinkServiceRoutes.providers.flatMap { p =>
             val e = p.toUpperCase

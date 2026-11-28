@@ -272,7 +272,8 @@ def canPost(s: State) = s.channel.mapC(_.exists(c => c.member && !c.archived))
 def canManage(s: State) = s.channel.mapC(c => c.exists(_.role.contains(ChannelRole.Admin)) || Store.me.v.exists(_.isAdmin))
 def isMember(s: State) = s.channel.mapC(_.exists(_.member))
 def title(s: State) = s.channel.mapC(_.map(Store.title).getOrElse(""))
-def icon(s: State) = s.channel.mapC(_.map(c => ChannelKind.icon(c.kind)).getOrElse(""))
+def icon(s: State) = s.channel.mapC(_.map(Store.icon).getOrElse(""))
+def voiceChannel(s: State) = s.channel.mapC(_.filter(_.voice).toList)
 def topic(s: State) = s.channel.mapC(_.map(c => if (c.topic.nonEmpty) c.topic else c.purpose).getOrElse(""))
 def memberCount(s: State) = s.channel.mapC(_.map(_.memberCount.toString).getOrElse(""))
 def isDm(s: State) = s.channel.mapC(_.exists(c => ChannelKind.isDm(c.kind)))
@@ -310,6 +311,7 @@ def meetings = Store.config.mapC(_.exists(_.meetings))
           <button class="small primary" type="submit">追加</button><button class="small" type="button" @click="s.addBookmark := false">やめる</button>
         </form>
       </div>
+      <VoiceStage v-for="c in voiceChannel(s)" :key="c.id" :channel="c" />
       <div class="list" ref="s.scroller" @scroll="onScroll(s, props)">
         <p v-if="s.error.mapC(_.nonEmpty)" class="error pad">{{ s.error }}</p>
         <div v-if="s.loading" class="muted pad">読み込み中…</div>

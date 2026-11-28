@@ -282,4 +282,70 @@ class StoreSpec extends CatsEffectSuite {
       _ = assert(v.html.contains("<img"))
     } yield ()
   }
+
+  withDb("ボイスチャンネル: 入る・移る・状態・取り決め・外れる・一覧") { st =>
+    val voice = new VoiceStore(xaFixture())
+    for {
+      a <- user(st, "ボイスA")
+      b <- user(st, "ボイスB")
+      c <- user(st, "ボイスC")
+      v1 <-
+        st.channels.create(uniq("雑談"), ChannelKind.Public, "", "", a.id, List(b.id), voice = true).map(_.toOption.get)
+      v2 <- st.channels.create(uniq("会議"), ChannelKind.Private, "", "", a.id, Nil, voice = true).map(_.toOption.get)
+      _ = assert(v1.voice)
+      dto <- st.channels.get(v1.id, a.id)
+      _ = assert(dto.exists(_.voice))
+      before <- st.messages.latestEvent
+      ca = UUID.randomUUID()
+      cb = UUID.randomUUID()
+      _ <- voice.join(ca, v1.id, a.id, muted = false, deafened = false)
+      _ <- voice.join(cb, v1.id, b.id, muted = true, deafened = false)
+      r1 <- voice.room(v1.id)
+      _ = assertEquals(r1.members.map(_.user.id), List(a.id, b.id))
+      _ = assertEquals(r1.members.map(_.muted), List(false, true))
+      evs <- st.messages.eventsAfter(before)
+      _ = assertEquals(evs.count(_._2 == v1.id), 2)
+      // 同じ状態を送っても変更履歴は残さない（15秒ごとの送信）. 変われば残す
+      e1 <- st.messages.latestEvent
+      ok <- voice.update(cb, b.id, muted = true, deafened = false, sharing = false)
+      e2 <- st.messages.latestEvent
+      _ = assert(ok)
+      _ = assertEquals(e2, e1)
+      _ <- voice.update(cb, b.id, muted = true, deafened = false, sharing = true)
+      e3 <- st.messages.latestEvent
+      _ = assert(e3 > e2)
+      // 他人の接続は変えられない
+      ng <- voice.update(cb, a.id, muted = false, deafened = false, sharing = false)
+      _ = assert(!ng)
+      // 取り決めは同じチャンネルの相手にだけ送れる
+      sent <- voice.signal(ca, cb, """{"candidate":null}""")
+      self <- voice.signal(ca, ca, "{}")
+      sigs <- voice.recentSignals(15, Some(b.id))
+      _ = assert(sent)
+      _ = assert(!self)
+      _ = assertEquals(sigs.map(r => (r.toConn, r.fromConn, r.data)), List((cb, ca, """{"candidate":null}""")))
+      // A が別のチャンネルに移ると、前の接続は外れる
+      ca2 = UUID.randomUUID()
+      old <- voice.join(ca2, v2.id, a.id, muted = false, deafened = false)
+      _ = assertEquals(old, Some(v1.id))
+      gone <- voice.conn(ca)
+      _ = assertEquals(gone, None)
+      cross <- voice.signal(ca2, cb, "{}")
+      _ = assert(!cross)
+      // 一覧: 参加しているチャンネルだけ（C はどちらのメンバーでもない. 公開チャンネルは watch で見られる）
+      ra <- voice.roomsFor(a.id, None)
+      _ = assertEquals(ra.map(_.channelId).toSet, Set(v1.id, v2.id))
+      rc <- voice.roomsFor(c.id, None)
+      _ = assert(!rc.exists(r => r.channelId == v1.id || r.channelId == v2.id))
+      rw <- voice.roomsFor(c.id, Some(v1.id))
+      _ = assertEquals(rw.find(_.channelId == v1.id).map(_.members.map(_.user.id)), Some(List(b.id)))
+      // 状態が届かなくなった接続は外す
+      n <- voice.expire(java.time.Instant.now().plusSeconds(60))
+      _ = assert(n >= 2)
+      r2 <- voice.room(v1.id)
+      _ = assertEquals(r2.members, Nil)
+      left <- voice.leave(ca2, a.id)
+      _ = assertEquals(left, None)
+    } yield ()
+  }
 }

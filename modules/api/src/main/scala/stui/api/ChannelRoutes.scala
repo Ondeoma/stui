@@ -20,6 +20,7 @@ final class ChannelRoutes(channels: ChannelStore,
                           users: UserStore,
                           activity: ActivityStore,
                           chat: ChatService,
+                          voice: VoiceService,
                           val sessions: SessionAuth,
                           val access: Access2) extends RouteSupport {
 
@@ -102,7 +103,14 @@ final class ChannelRoutes(channels: ChannelStore,
     withChannel(req, id, Need.Read)((s, _) => channelDto(id, s))
 
   private def patchChannel(req: Request[IO], id: UUID): IO[Response[IO]] =
-    authed(req)(s => body[UpdateChannelReq](req)(r => okJson(chat.updateChannel(s, id, r))))
+    authed(req)(s =>
+      body[UpdateChannelReq](req)(r =>
+        // ボイスチャンネルをやめた・アーカイブしたら、入っている人を外す
+        okJson(chat.updateChannel(s, id, r).flatTap(_.traverse_(_ =>
+          voice.channelChanged(id).whenA(r.voice.contains(false) || r.archived.contains(true))
+        )))
+      )
+    )
 
   private def deleteChannel(req: Request[IO], id: UUID): IO[Response[IO]] =
     admin(req)(s =>

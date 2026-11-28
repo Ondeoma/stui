@@ -6,6 +6,10 @@ stui は、チームのためのコミュニケーションツールです（Mat
 
 - **チャンネル**: 公開（誰でも参加できる）・非公開（招待した人だけ）。トピック・説明、メンバーと管理者、お気に入り、アーカイブ、
   全員を自動で参加させるチャンネル（最初は `#general`）、**ピン留め**、ヘッダーに並べる**ブックマーク**（リンク）、チャンネルを探す
+- **ボイスチャンネル**（Discord のような通話の部屋）: サイドバーの「ボイスチャンネル」から1クリックで入り、出るまでつながったまま（ほかのチャンネルを見ていてもよい）。
+  入っている人はサイドバーと画面に並び、話している人の枠が光る。マイクのオン・オフ（Ctrl+Shift+M）、スピーカーのオフ（Ctrl+Shift+D）、
+  **画面共有**（タブ・ウィンドウ・画面全体。タブの音も）、入退室の音。ボイスチャンネルにもふつうのチャットがある。
+  音声・画面は参加者どうしが WebRTC で直接送り合う（メッシュ。少人数向け）
 - **スレッド**: どのメッセージにも返信できる（右の欄に開く）。「チャンネルにも送信」、フォロー（返信を通知）、フォロー中のスレッドの一覧と未読
 - **DM**: 1対1・グループ（9人まで）・自分だけのメモ。一覧から隠せる（新しいメッセージで戻る）
 - **メッセージ**: WYSIWYG（Tiptap。skiwi・skea と同じエディタ）。太字・リスト・ToDo・引用・言語を選べるコードブロック・表・リンク、
@@ -102,6 +106,8 @@ java -cp 'dist/lib/*' stui.app.Main
 | `WEBHOOK_ALLOW_HTTP` | 送信の Webhook の送信先に http:// を許す（開発用） |
 | `WEBHOOK_ALLOW_PRIVATE` | 送信の Webhook の送信先に内部のネットワーク（localhost・プライベートな IP）を許す（開発用。既定では SSRF を防ぐため断る） |
 | `RATE_LIMIT_AUTH` / `RATE_LIMIT_PUBLIC` | IP ごとの1分あたりの回数の上限。ログインと OAuth の認可の画面（`/auth/…`・`/oauth/authorize`、既定 20）と、OAuth のトークンの発行・失効（`/oauth/token`・`/oauth/revoke`、既定 120）。0 で制限しない。ノードごとに数える。受信の Webhook（`/hooks/…`）と、ログインした人・APIキー（Bot を含む）の API は数えない |
+| `ICE_SERVERS` | ボイスチャンネルの WebRTC の STUN・TURN（JSON。既定 `[{"urls":["stun:stun.l.google.com:19302"]}]`） |
+| `TURN_URLS` / `TURN_SECRET` / `TURN_TTL_HOURS` | TURN サーバー（coturn の `use-auth-secret`）。参加者ごとに一時的な認証情報を作る（既定 12 時間有効）。社外・モバイル回線・厳しいファイアウォールの中からも話せるようにするときに設定する（skaka と同じ TURN サーバーを使える） |
 | `TRUSTED_PROXIES` | リバースプロキシの IP か CIDR（カンマ区切り）。そこから来た要求だけ `X-Forwarded-For` から利用者の IP を読む。リバースプロキシの後ろに置くときは必ず設定する（未設定だと全員がプロキシの IP として数えられ、上限にすぐ達する） |
 | `OAUTH_CLIENTS` | stui を使う兄弟のサービス。`[{"id":"skea","secret":"…（16文字以上）","redirectUri":"https://…/callback","name":"skea","scopes":["read","write"]}]` |
 | `SKIWI_*`・`SKAWAU_*`・`SKEA_*`・`SKAKA_*`（`_URL`・`_CLIENT_ID`・`_CLIENT_SECRET`・`_INTERNAL_URL`） | stui から使う兄弟のサービス（リンクの名前・会議室）。[docs/integrations.md](docs/integrations.md) |

@@ -67,6 +67,7 @@ object Main extends IOApp.Simple {
         search = new SearchStore(xa, messages)
         schedule = new ScheduleStore(xa, messages)
         emojis = new EmojiStore(xa)
+        voiceStore = new VoiceStore(xa)
         lock = new JobLock(xa, cfg.nodeId)
         box = SecretBox(cfg.appSecret)
         oidc <- Resource.eval(cfg.oidc.traverse(OidcClient.create(_, http)))
@@ -78,6 +79,7 @@ object Main extends IOApp.Simple {
         notifier = new NotifyService(activity, cfg.api, cfg.mailDelaySeconds, Some(push))
         chat = new ChatService(channels, messages, users, access, notifier, hooks, activity, cfg.api)
         webhooks = new WebhookService(hooks, users, channels, chat, hookHttp, cfg.api)
+        voice = new VoiceService(voiceStore, channels, chat, access, cfg.api.ice)
         sched = new ScheduleService(schedule, messages, channels, users, chat, notifier, sess)
         mailer = cfg.smtp.map(new SmtpMailer(_))
         feed <- Resource.eval(EventFeed(messages, activity))
@@ -90,6 +92,8 @@ object Main extends IOApp.Simple {
           sched.reminderLoop,
           sched.scheduledLoop,
           feed.loop,
+          feed.signalLoop(voiceStore),
+          voice.loop,
           purgeLoop(users, activity, messages, blobs, lock)
         )
         _ <- loops.traverse_(_.background)
@@ -99,14 +103,15 @@ object Main extends IOApp.Simple {
             new AuthRoutes(oidc, users, channels, activity, sess, access, cfg.api).routes <+>
             new UserRoutes(users, channels, activity, blobs, emojis, sess, access).routes <+>
             new AgentRoutes(users, channels, chat, activity, sess, access).routes <+>
-            new ChannelRoutes(channels, messages, users, activity, chat, sess, access).routes <+>
+            new ChannelRoutes(channels, messages, users, activity, chat, voice, sess, access).routes <+>
             new MessageRoutes(messages, channels, activity, chat, blobs, sess, access, cfg.api).routes <+>
             new SearchRoutes(search, channels, users, sess, access).routes <+>
             new NotificationRoutes(activity, sess, access).routes <+>
             new ScheduleRoutes(schedule, sched, activity, sess, access).routes <+>
             new HookRoutes(hooks, webhooks, channels, activity, sess, access, cfg.api).routes <+>
             new AppRoutes(channels, users, chat, notifier, sess, access, cfg.api).routes <+>
-            new StreamRoutes(feed, channels, sess, access).routes <+>
+            new StreamRoutes(feed, channels, voiceStore, sess, access).routes <+>
+            new VoiceRoutes(voice, sess, access).routes <+>
             new OAuthRoutes(
               new sbirds.oauth.OAuthKeyStore(xa, revokeOnReuse = true),
               activity,

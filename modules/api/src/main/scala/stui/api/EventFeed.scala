@@ -45,6 +45,25 @@ final class EventFeed private (messages: MessageStore,
         go(start, now)
     }
 
+  /**
+   * ボイスチャンネルの取り決め（SDP・ICE の候補）を配る。0.15秒ごとに最近15秒の行を読み、まだ配っていないものを宛先の人の画面へ送る
+   * （番号は書き込みの確定の順と前後することがあるため、番号で区切らず、配った番号を30秒覚えておく）。
+   */
+  def signalLoop(voice: VoiceStore): IO[Nothing] = {
+    def go(seen: Map[Long, Long]): IO[Nothing] =
+      IO.sleep(150.millis) *> (voice.recentSignals(15), IO.monotonic.map(_.toMillis)).tupled.flatMap { (rows, now) =>
+        val fresh = rows.filterNot(r => seen.contains(r.id))
+        fresh.traverse_(r => publish(FeedItem.Signal(r.toUser, VoiceSignals.json(r)))).as(
+          (seen ++ fresh.map(_.id -> now)).filter(_._2 > now - 30000)
+        )
+      }.handleErrorWith(e => sbirds.observe.Log.report(ErrorCode.VoiceSignalFeedFailed, e.toString, e).as(seen))
+        .flatMap(go)
+    // 起動前の行は配らない
+    (voice.recentSignals(30), IO.monotonic.map(_.toMillis)).tupled
+      .handleError(_ => (Nil, 0L))
+      .flatMap((rows, now) => go(rows.map(_.id -> now).toMap))
+  }
+
   /** 購読する。接続が多すぎれば None。 */
   def subscribe(user: UUID): IO[Option[Stream[IO, FeedItem]]] =
     perUser.modify { m =>
@@ -66,4 +85,17 @@ object EventFeed {
   def apply(messages: MessageStore, activity: ActivityStore): IO[EventFeed] =
     (Ref.of[IO, Map[Long, Queue[IO, FeedItem]]](Map.empty), Ref.of[IO, Map[UUID, Int]](Map.empty), Ref.of[IO, Long](0L))
       .mapN(new EventFeed(messages, activity, _, _, _))
+}
+
+/** 届ける取り決めの JSON（SSE の voice-signal）。 */
+object VoiceSignals {
+  def json(r: VoiceSignalRow): String = {
+    import io.circe.syntax.*
+    stui.shared.VoiceSignalDto(
+      r.id,
+      r.toConn,
+      r.fromConn,
+      io.circe.parser.parse(r.data).getOrElse(io.circe.Json.Null)
+    ).asJson.noSpaces
+  }
 }

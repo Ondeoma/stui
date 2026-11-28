@@ -24,7 +24,8 @@ final case class ChannelRow(id: UUID,
                             autoJoin: Boolean,
                             createdBy: Option[UUID],
                             createdAt: Instant,
-                            lastMessageAt: Option[Instant]) {
+                            lastMessageAt: Option[Instant],
+                            voice: Boolean = false) {
   def brief: ChannelBrief = ChannelBrief(id, name, kind)
   def isDm: Boolean = ChannelKind.isDm(kind)
   def isPublic: Boolean = kind == ChannelKind.Public
@@ -39,7 +40,7 @@ final case class Recipient(userId: UUID, notifyLevel: String, muted: Boolean, is
 final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
 
   private val cols =
-    fr"c.id, c.name, c.kind, c.topic, c.purpose, c.dm_key, c.archived, c.auto_join, c.created_by, c.created_at, c.last_message_at"
+    fr"c.id, c.name, c.kind, c.topic, c.purpose, c.dm_key, c.archived, c.auto_join, c.created_by, c.created_at, c.last_message_at, c.voice"
 
   def find(id: UUID): IO[Option[ChannelRow]] = tx(findC(id))
 
@@ -79,7 +80,8 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
     Option[String],
     Int,
     Int,
-    Option[Long]
+    Option[Long],
+    Boolean
   )
 
   /** 自分の未読（人のメッセージだけ。100件まで数える）・メンションの数。 */
@@ -91,7 +93,7 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
               and (m.root_id is null or m.also_channel) and m.kind <> 'system' and m.author_id is distinct from $uid limit 100) u), 0)::int,
            coalesce((select count(*) from notification n where n.user_id = $uid and n.channel_id = c.id and n.read_at is null
               and n.kind in ('mention', 'dm')), 0)::int,
-           cm.last_read_seq
+           cm.last_read_seq, c.voice
          from channel c left join channel_member cm on cm.channel_id = c.id and cm.user_id = $uid"""
 
   private def toDtos(uid: UUID, rows: List[CRow]): ConnectionIO[List[ChannelDto]] = {
@@ -128,7 +130,8 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
           if r._11 then r._16 else 0,
           r._17,
           r._18.getOrElse(0L),
-          dm.getOrElse(r._1, Nil)
+          dm.getOrElse(r._1, Nil),
+          r._19
         )
       }
     )
@@ -192,7 +195,8 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
              purpose: String,
              by: UUID,
              members: List[UUID],
-             autoJoin: Boolean = false)
+             autoJoin: Boolean = false,
+             voice: Boolean = false)
     : IO[Either[AppError, ChannelRow]] = tx {
     sql"select exists(select 1 from channel where lower(name) = lower($name) and kind in ('public', 'private'))".query[
       Boolean
@@ -201,8 +205,8 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
       case false =>
         val id = UUID.randomUUID()
         for {
-          _ <- sql"""insert into channel (id, name, kind, topic, purpose, auto_join, created_by)
-                     values ($id, $name, $kind, $topic, $purpose, $autoJoin, $by)""".update.run
+          _ <- sql"""insert into channel (id, name, kind, topic, purpose, auto_join, created_by, voice)
+                     values ($id, $name, $kind, $topic, $purpose, $autoJoin, $by, $voice)""".update.run
           _ <- joinC(id, List(by), ChannelRole.Admin, Some(by))
           ms <- activeC(members.filterNot(_ == by))
           _ <- joinC(id, ms, ChannelRole.Member, Some(by))
@@ -253,7 +257,8 @@ final class ChannelStore(xa: Transactor[IO]) extends TxStore(xa) {
           r.topic.map(v => fr"topic = ${v.trim.take(250)}"),
           r.purpose.map(v => fr"purpose = ${v.trim.take(250)}"),
           r.archived.map(v => fr"archived = $v"),
-          r.autoJoin.map(v => fr"auto_join = $v")
+          r.autoJoin.map(v => fr"auto_join = $v"),
+          r.voice.map(v => fr"voice = $v")
         ).flatten
         if sets.isEmpty then Right(()).pure[ConnectionIO]
         else

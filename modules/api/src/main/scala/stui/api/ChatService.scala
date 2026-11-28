@@ -345,7 +345,8 @@ final class ChatService(channels: ChannelStore,
           r.topic.getOrElse("").trim.take(250),
           r.purpose.getOrElse("").trim.take(250),
           s.user.id,
-          r.memberIds
+          r.memberIds,
+          voice = r.voice.contains(true)
         )
           .flatMap {
             case Left(f) => IO.pure(Left(f))
@@ -367,10 +368,11 @@ final class ChatService(channels: ChannelStore,
     access.channel(s, id, Need.Read).flatMap {
       case Left(f) => IO.pure(Left(f))
       case Right(ctx) =>
-        // トピック・説明はメンバーなら誰でも変えられる。名前・アーカイブ・自動参加は管理者だけ
-        val manage = r.name.isDefined || r.archived.isDefined || r.autoJoin.isDefined
+        // トピック・説明はメンバーなら誰でも変えられる。名前・アーカイブ・自動参加・ボイスチャンネルかどうかは管理者だけ
+        val manage = r.name.isDefined || r.archived.isDefined || r.autoJoin.isDefined || r.voice.isDefined
         val allowed =
           if !s.canWrite then Left(AppError(ErrorCode.ApiKeyReadOnly))
+          else if ctx.channel.isDm && r.voice.isDefined then Left(AppError(ErrorCode.VoiceDmNotAllowed))
           else if ctx.channel.isDm && manage then Left(AppError(ErrorCode.DmRenameNotAllowed))
           else if manage && !ctx.isChannelAdmin && !s.canAdmin then Left(AppError(ErrorCode.ChannelAdminOnly))
           else if r.autoJoin.contains(true) && !s.canAdmin then Left(AppError(ErrorCode.ChannelAutoJoinAdminOnly))
@@ -396,6 +398,9 @@ final class ChatService(channels: ChannelStore,
                       name.filter(_ != c.name).map(n => s"${s.user.name} さんがチャンネルの名前を「$n」にしました"),
                       r.archived.filter(_ != c.archived).map(a =>
                         if a then s"${s.user.name} さんがチャンネルをアーカイブしました" else s"${s.user.name} さんがアーカイブを戻しました"
+                      ),
+                      r.voice.filter(_ != c.voice).map(v =>
+                        if v then s"${s.user.name} さんがボイスチャンネルにしました" else s"${s.user.name} さんがボイスチャンネルをやめました"
                       )
                     ).flatten
                     notes.traverse_(t => system(c, s.user, t)) *>

@@ -20,7 +20,7 @@ val otelInstV = "2.33.1-alpha"
 lazy val sbirdsLib = sys.env
   .get("SBIRDS_LIB")
   .map(p => file(p).getCanonicalFile.toURI)
-  .getOrElse(uri("https://github.com/Ondeoma/sbirds-lib.git#v0.5.1"))
+  .getOrElse(uri("https://github.com/Ondeoma/sbirds-lib.git#v0.5.2"))
 lazy val libSharedJVM = ProjectRef(sbirdsLib, "sharedJVM")
 lazy val libSharedJS = ProjectRef(sbirdsLib, "sharedJS")
 lazy val libObserve = ProjectRef(sbirdsLib, "observe")

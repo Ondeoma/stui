@@ -51,6 +51,23 @@ object Api extends sbirds.web.ApiBase {
   def mentionGroups(id: UUID): Future[List[MentionGroupDto]] =
     get[List[MentionGroupDto]](s"/api/channels/$id/mention-groups")
 
+  // ---------------------------------------------------------------- ボイスチャンネル
+
+  def voiceRooms(watch: Option[UUID]): Future[List[VoiceRoomDto]] =
+    get[List[VoiceRoomDto]]("/api/voice" + query("watch" -> watch.map(_.toString)))
+  def voiceJoin(r: VoiceJoinReq): Future[VoiceJoinDto] = post[VoiceJoinDto]("/api/voice/join", r.asJson.dropNullValues)
+  def voiceLeave(conn: UUID): Future[Unit] = postUnit("/api/voice/leave", VoiceLeaveReq(conn).asJson)
+  def voiceState(r: VoiceStateReq): Future[Unit] = postUnit("/api/voice/state", r.asJson)
+  def voiceSignal(r: VoiceSignalReq): Future[Unit] = postUnit("/api/voice/signal", r.asJson)
+
+  /** 画面を閉じるときに出る（keepalive: ページが消えても送り終える）. */
+  def voiceLeaveKeepalive(conn: UUID): Unit = {
+    val i = init(dom.HttpMethod.POST, Some(VoiceLeaveReq(conn).asJson.noSpaces))
+    i.keepalive = true
+    dom.fetch("/api/voice/leave", i)
+    ()
+  }
+
   // ---------------------------------------------------------------- メッセージ
 
   def messages(id: UUID,

@@ -51,17 +51,24 @@ def mounted(s: State): Unit = {
     Store.loadChannels().onComplete { _ =>
       Store.poll()
       Store.connect()
+      Voice.reload()
       s.ready := true
     }
     Emojis.load()
   }
-  // Ctrl+K で検索
+  // Ctrl+K で検索. ボイスチャンネルに入っている間は Ctrl+Shift+M でマイク、Ctrl+Shift+D でスピーカー
   useEventListener[dom.KeyboardEvent](dom.document, "keydown") { e =>
     if ((e.ctrlKey || e.metaKey) && e.key == "k") {
       e.preventDefault()
       Option(dom.document.querySelector(".top .search input")).foreach(_.asInstanceOf[dom.HTMLInputElement].focus())
+    } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && Voice.channel.v.isDefined && e.key.toLowerCase == "m") {
+      e.preventDefault(); Voice.toggleMute()
+    } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && Voice.channel.v.isDefined && e.key.toLowerCase == "d") {
+      e.preventDefault(); Voice.toggleDeafen()
     }
   }
+  // 画面を閉じたらボイスチャンネルから出る
+  useEventListener[dom.Event](dom.window, "pagehide")(_ => Voice.leaveNow())
   ()
 }
 
@@ -78,6 +85,8 @@ def unreadLabel = Store.unread.mapC(u => if (u.unread > 99) "99+" else u.unread.
 def hasUnread = Store.unread.mapC(_.unread > 0)
 def loggedIn = Store.me.mapC(_.isDefined)
 def sideClass = Store.sideOpen.mapC(o => if (o) "side open" else "side")
+def inVoice = Voice.channel.mapC(_.isDefined)
+def openVoice(): Unit = Voice.channel.v.foreach(Store.openChannel)
 </script>
 
 <template>
@@ -92,6 +101,7 @@ def sideClass = Store.sideOpen.mapC(o => if (o) "side open" else "side")
         <form class="search" @submit.prevent="search(s)">
           <input type="search" v-model="s.q" placeholder="検索（例: 障害 in:#開発 from:@山田）  Ctrl+K">
         </form>
+        <button v-if="inVoice" class="ghost icon voice-ind" title="つながっているボイスチャンネルを開く" @click="openVoice()">🔊</button>
         <RouterLink to="/activity" class="icon bell">
           🔔<span v-if="hasUnread" class="dot">{{ unreadLabel }}</span>
         </RouterLink>
@@ -111,7 +121,7 @@ def sideClass = Store.sideOpen.mapC(o => if (o) "side open" else "side")
       </main>
     </div>
   </div>
-  <CreateChannelDialog v-if='Store.dialog.mapC(_ == "channel")' />
+  <CreateChannelDialog v-if='Store.dialog.mapC(d => d == "channel" || d == "voice")' />
   <NewDmDialog v-if='Store.dialog.mapC(_ == "dm")' />
   <DialogHost />
   <ToastHost />
@@ -134,6 +144,7 @@ def sideClass = Store.sideOpen.mapC(o => if (o) "side open" else "side")
   min-width: 230px; padding: .3rem; display: flex; flex-direction: column; z-index: 200; }
 .menu-bg { position: fixed; inset: 0; z-index: 199; }
 .side-bg { display: none; }
+.voice-ind { color: #22c55e; }
 @media (max-width: 760px) {
   .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 300; transform: translateX(-100%); transition: transform .18s ease-out; width: 82vw; max-width: 300px; }
   .side.open { transform: none; box-shadow: var(--shadow); }

@@ -55,9 +55,12 @@ stui はチームのためのコミュニケーションツールです（チャ
 - `app_user(id, sub, name, email, avatar_url, avatar_key, is_admin, is_bot, disabled, timezone, …)` … ボット（`sub = bot:…`）は Webhook・連携サービス・リマインダーの発言者
 - `user_group`・`group_member` … IdP の groups クレームから同期（まとめてのメンション・`ADMIN_GROUPS`）
 - `session`・`login_state`・`api_key(…, scopes, oauth_client)`
-- `channel(id, name, kind, topic, purpose, dm_key, archived, auto_join, created_by, last_message_at)`
+- `channel(id, name, kind, topic, purpose, dm_key, archived, auto_join, created_by, last_message_at, voice)`
   - `kind`: `public`・`private`・`dm`（1対1・自分だけ）・`group`（3人以上の DM）。DM は参加者の ID を並べた `dm_key` で同じ顔ぶれを1つにする。
   - `auto_join`: 新しいユーザーを自動で参加させる（最初のユーザーがログインすると `#general` を作る）。
+  - `voice`: ボイスチャンネル（公開・非公開のチャンネルだけ。チャットもそのまま使える）。
+- `voice_member(conn_id, channel_id, user_id unique, muted, deafened, sharing, joined_at, seen_at)` … ボイスチャンネルにいる人（画面のタブごとの接続。1人1か所）
+- `voice_signal(id, to_user, to_conn, from_conn, data, at)` … WebRTC の取り決めの受け渡し（1分で消す）
 - `channel_member(channel_id, user_id, role, notify, muted, favorite, hidden, last_read_seq)` … 未読は `message.seq > last_read_seq` の数
 - `channel_bookmark(channel_id, title, url, emoji, position)` … ヘッダーに並べるリンク
 - `message(id, seq, channel_id, root_id, also_channel, author_id, kind, via, body jsonb, body_text, props jsonb, reply_count, last_reply_at,
@@ -103,6 +106,21 @@ stui はチームのためのコミュニケーションツールです（チャ
 - 知らせを受けると（まとめて1回）`GET /api/changes?since={eventId}` で変更を受け取り、表示中のチャンネル・スレッドは
   変わったメッセージだけを `POST /api/messages/batch` で取り直して差し替える。サイドバーの未読も取り直す。
 - SSE がつながらないときは10秒ごと、つながっている間も念のため60秒ごとに確かめる。タブが非表示のあいだは止め、表示に戻ったときに確かめる。
+
+## 5.1 ボイスチャンネル（WebRTC）
+
+- 音声・画面共有は参加者どうしが WebRTC で直接送り合う（メッシュ。相手ごとに RTCPeerConnection）。サーバーは顔ぶれ・状態と、接続の取り決め（SDP・ICE の候補）の受け渡しだけ。
+  メッシュは人数の2乗で通信が増えるので、少人数（目安 8 人まで）の通話向け。
+- 入る: `POST /api/voice/join {channelId}` → 接続の ID（`connId`）と ICE サーバー（STUN・TURN の一時的な認証情報）と、いま入っている人。
+  公開チャンネルに参加していなければ先に参加する。同じ人の前の接続（ほかのチャンネル・タブ）は外す（1人1か所）。
+- 顔ぶれ・状態（ミュート・スピーカーのオフ・画面共有）が変わると変更履歴（`chat_event` の `voice.changed`）を残し、メンバーの画面は SSE の `change` → `GET /api/voice` で読み直す。
+  画面は15秒ごとに状態を送り（`POST /api/voice/state`）、45秒届かなければ全ノードの定期処理が外す（画面を閉じたとき・通信が切れたとき）。画面を閉じるときは keepalive の fetch で `leave` を送る。
+- 取り決め: 送る側は `POST /api/voice/signal {connId, to, data}`（同じボイスチャンネルの相手だけ）。DB の `voice_signal` に書き、各ノードが0.15秒ごとに最近15秒の行を読んで、
+  宛先の人の SSE に `voice-signal` として中身ごと送る（番号は書き込みの確定の順と前後しうるので、番号で区切らず、配った番号を30秒覚える）。
+  SSE をつなぎ直したときは最初に最近15秒の分も送り、画面が番号で重複を除く。ノード間の連絡は不要（どのノードにつないでいても届く）。
+- 交渉は perfect negotiation（ぶつかったら `connId` の小さい側が譲る）。マイクのオン・オフはトラックの `enabled` で切り替え、交渉し直さない。
+  画面共有はトラックを足す・外すので交渉し直す。つながらないままなら譲らない側が ICE をやり直す。
+- 話している人は、受けた音声（と自分のマイク）を AnalyserNode で測って枠を光らせる（ミュートの人は除く）。音は画面の表示と別の audio 要素で鳴らすので、ほかのチャンネルを見ていても聞こえる。
 
 ## 6. メッセージ（リッチテキスト）
 

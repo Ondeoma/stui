@@ -42,6 +42,12 @@ object Store {
 
   def myId: Option[UUID] = me.v.map(_.id)
 
+  /** 表示中のチャンネル. */
+  def viewingId: Option[UUID] = viewing
+
+  /** チャンネルの印（ボイスチャンネルは 🔊）. */
+  def icon(c: ChannelDto): String = if (c.voice) "🔊" else ChannelKind.icon(c.kind)
+
   /** システム管理者か. */
   def isAdmin = me.mapC(_.exists(_.isAdmin))
 
@@ -139,6 +145,7 @@ object Store {
     viewing = id
     val watch = id.filterNot(i => channel(i).exists(_.member))
     if (watch != streamWatch) { stream.foreach(_.close()); stream = None; connect() }
+    if (id.flatMap(channel).exists(_.voice) || watch.isDefined) Voice.reload()
   }
 
   // ---------------------------------------------------------------- 自動同期
@@ -157,7 +164,9 @@ object Store {
           since = c.latest
           eventSeq += 1
           events := ((eventSeq, c.events))
-          if (c.events.exists(e => e.kind != EventKind.ReactionChanged)) reloadChannels()
+          if (c.events.exists(e => e.kind != EventKind.ReactionChanged && e.kind != EventKind.VoiceChanged))
+            reloadChannels()
+          if (c.events.exists(_.kind == EventKind.VoiceChanged)) Voice.reload()
           if (c.events.exists(e => (e.kind == EventKind.MemberJoined || e.kind == EventKind.MemberLeft)))
             memberCache = Map.empty
         } else since = c.latest
@@ -221,7 +230,9 @@ object Store {
     es.addEventListener("change", (_: dom.MessageEvent) => soon())
     es.addEventListener("notify", (_: dom.MessageEvent) => soon())
     // つなぎ直したときは取りこぼしを確かめる
-    es.addEventListener("open", (_: dom.Event) => soon())
+    es.addEventListener("open", (_: dom.Event) => { soon(); Voice.reload() })
+    // ボイスチャンネルの接続の取り決め（中身ごと届く）
+    es.addEventListener("voice-signal", (e: dom.MessageEvent) => Voice.onSignal(e.data.toString))
     stream = Some(es)
     streamWatch = watch
   }

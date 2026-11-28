@@ -114,6 +114,11 @@ enum ErrorCode(val code: String, val status: Int, val message: String) extends s
   case PushServiceNotAllowed extends ErrorCode("STUI-7001", 400, "このプッシュのサービスには送れません")
   case PushSubscriptionInvalid extends ErrorCode("STUI-7002", 400, "購読の内容が正しくありません")
   case TooManyStreams extends ErrorCode("STUI-7101", 429, "同時に開いている画面が多すぎます")
+  case VoiceNotEnabled extends ErrorCode("STUI-7201", 400, "ボイスチャンネルではありません")
+  case VoiceNotJoined extends ErrorCode("STUI-7202", 404, "ボイスチャンネルに入っていません（ほかの画面で入ったか、接続が切れました）")
+  case VoicePeerNotFound extends ErrorCode("STUI-7203", 404, "相手がボイスチャンネルにいません")
+  case VoiceSignalTooLarge extends ErrorCode("STUI-7204", 400, "接続の情報が大きすぎます")
+  case VoiceDmNotAllowed extends ErrorCode("STUI-7205", 400, "DM はボイスチャンネルにできません")
   case Unexpected extends ErrorCode("STUI-9001", 500, "サーバーでエラーが発生しました")
   case EventFeedFailed extends ErrorCode("STUI-9101", 500, "イベントの配信に失敗しました")
   case NotifyFailed extends ErrorCode("STUI-9102", 500, "通知の送信に失敗しました")
@@ -127,4 +132,6 @@ enum ErrorCode(val code: String, val status: Int, val message: String) extends s
   case ScheduledWorkerFailed extends ErrorCode("STUI-9110", 500, "定期メッセージの処理に失敗しました")
   case PurgeFailed extends ErrorCode("STUI-9111", 500, "古いデータの削除に失敗しました")
   case McpToolFailed extends ErrorCode("STUI-9112", 500, "MCP のツールの実行に失敗しました")
+  case VoiceCleanupFailed extends ErrorCode("STUI-9113", 500, "ボイスチャンネルの接続の片付けに失敗しました")
+  case VoiceSignalFeedFailed extends ErrorCode("STUI-9114", 500, "ボイスチャンネルの接続の情報の配信に失敗しました")
 }

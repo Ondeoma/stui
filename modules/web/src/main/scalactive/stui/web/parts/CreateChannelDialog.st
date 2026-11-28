@@ -4,16 +4,16 @@ import stui.shared.*
 
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 
-// チャンネルを作る（名前・公開/非公開・トピック・最初のメンバー）
+// チャンネルを作る（名前・公開/非公開・ボイスチャンネル・トピック・最初のメンバー）
 case class State(name: RV[String] = RV(""), priv: RV[Boolean] = RV(false), topic: RV[String] = RV(""), purpose: RV[String] = RV(""),
-                 members: RV[List[UserBrief]] = RV(Nil), act: ActionState)
+                 members: RV[List[UserBrief]] = RV(Nil), voice: RV[Boolean] = RV(false), act: ActionState)
 
-def initState() = State(act = useAction())
+def initState() = State(voice = RV(Store.dialog.v == "voice"), act = useAction())
 
 def close(): Unit = Store.dialog := ""
 
 def create(s: State): Unit = if (!s.act.busy.v) {
-  val r = CreateChannelReq(s.name.v, if (s.priv.v) ChannelKind.Private else ChannelKind.Public, Some(s.topic.v), Some(s.purpose.v), s.members.v.map(_.id))
+  val r = CreateChannelReq(s.name.v, if (s.priv.v) ChannelKind.Private else ChannelKind.Public, Some(s.topic.v), Some(s.purpose.v), s.members.v.map(_.id), Some(s.voice.v))
   s.act.run(Api.createChannel(r)).foreach { c => close(); Store.replace(c); Store.openChannel(c.id) }
 }
 
@@ -23,9 +23,10 @@ def add(s: State, u: UserBrief): Unit = if (!s.members.v.exists(_.id == u.id) &&
 <template>
   <Modal :onClose="_ => close()">
     <form @submit.prevent="create(s)">
-      <h2>チャンネルを作る</h2>
+      <h2>{{ s.voice.mapC(v => if (v) "ボイスチャンネルを作る" else "チャンネルを作る") }}</h2>
       <label class="field">名前<input type="text" v-model="s.name" placeholder="例: 開発・お知らせ" v-focus maxlength="80"></label>
       <label class="check"><input type="checkbox" v-model="s.priv"> 🔒 非公開（招待した人だけが見られる）</label>
+      <label class="check"><input type="checkbox" v-model="s.voice"> 🔊 ボイスチャンネル（いつでも入れる通話の部屋. 画面共有もできる. チャットも使える）</label>
       <label class="field">トピック（任意）<input type="text" v-model="s.topic" placeholder="いま話していること" maxlength="250"></label>
       <label class="field">説明（任意）<input type="text" v-model="s.purpose" placeholder="何のためのチャンネルか" maxlength="250"></label>
       <div class="field">最初のメンバー（任意）

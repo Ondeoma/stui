@@ -57,7 +57,16 @@ class AgentAccountSpec extends CatsEffectSuite {
       new AuthRoutes(None, users, channels, activity, sess, access, api).routes <+>
         new UserRoutes(users, channels, activity, None, new EmojiStore(xa), sess, access).routes <+>
         new AgentRoutes(users, channels, chat, activity, sess, access).routes <+>
-        new ChannelRoutes(channels, messages, users, activity, chat, sess, access).routes <+>
+        new ChannelRoutes(
+          channels,
+          messages,
+          users,
+          activity,
+          chat,
+          new VoiceService(new VoiceStore(xa), channels, chat, access, api.ice),
+          sess,
+          access
+        ).routes <+>
         new MessageRoutes(messages, channels, activity, chat, None, sess, access, api).routes
     val app: HttpApp[IO] = (rest <+> new McpRoutes(rest, sess, api.publicUrl).routes).orNotFound
 
